@@ -2,8 +2,10 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { ingestEvents } from "../../../lib/ingest/events";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const secret = req.headers["x-cron-secret"] || req.query.secret;
-  if (secret !== process.env.CRON_SECRET) {
+  // Accept Vercel Cron header or manual secret
+  const isVercelCron = req.headers["authorization"] === `Bearer ${process.env.CRON_SECRET}`;
+  const isManualSecret = req.query.secret === process.env.CRON_SECRET;
+  if (!isVercelCron && !isManualSecret) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
