@@ -69,7 +69,7 @@ News Sources (50+ feeds, 20 countries)
 ## Tech Stack
 
 - **Framework:** Next.js 16 (Pages Router), React 18, TypeScript
-- **Database:** Prisma ORM with SQLite (9 models)
+- **Database:** Prisma ORM with Supabase PostgreSQL (9 models)
 - **Auth:** NextAuth v4 with JWT strategy and credentials provider
 - **Styling:** Tailwind CSS with custom dark theme
 - **Data Fetching:** SWR with auto-refresh intervals
@@ -87,9 +87,9 @@ News Sources (50+ feeds, 20 countries)
 git clone https://github.com/Sasidhar-7302/Geopolitics_Finance_Dashboard.git
 cd Geopolitics_Finance_Dashboard
 npm install
-cp .env.example .env       # Set NEXTAUTH_SECRET
+cp .env.example .env       # Fill in your Supabase connection strings
 npx prisma generate
-npx prisma migrate dev
+npx prisma db push
 npm run dev
 ```
 
@@ -99,9 +99,10 @@ Open `http://localhost:3000`. Sign up, complete onboarding, and trigger your fir
 
 | Variable | Required | Description |
 |---|---|---|
+| `DATABASE_URL` | Yes | Supabase pooler connection string (port 6543) |
+| `DIRECT_URL` | Yes | Supabase direct connection string (port 5432) |
 | `NEXTAUTH_SECRET` | Yes | Random secret for JWT (`openssl rand -base64 32`) |
 | `NEXTAUTH_URL` | Yes | App URL (`http://localhost:3000`) |
-| `DATABASE_URL` | Yes | Database path (`file:./dev.db`) |
 | `CRON_SECRET` | No | Token for automated ingestion endpoint |
 
 ---
@@ -124,7 +125,7 @@ graph TB
     end
 
     subgraph Storage["Storage"]
-        DB[("SQLite · 9 Models")]
+        DB[("Supabase PostgreSQL · 9 Models")]
     end
 
     subgraph App["Application"]
@@ -259,7 +260,7 @@ Full reference with request/response examples: [docs/api-reference.md](docs/api-
 - [ ] Email digest notifications
 - [ ] Historical pattern timelines
 - [ ] Entity-level sentiment analysis
-- [ ] PostgreSQL for production scale
+- [x] PostgreSQL for production scale (Supabase)
 - [ ] Payment integration for Pro tier
 - [ ] Mobile-responsive PWA
 
