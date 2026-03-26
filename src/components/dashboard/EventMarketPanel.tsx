@@ -8,14 +8,22 @@ import { relativeTime, formatPct, formatCurrency } from "../../lib/format";
 type Props = {
   events: EventItem[];
   quoteMap: Map<string, Quote>;
+  emptyState?: {
+    title: string;
+    hint?: string;
+  };
 };
 
-export default function EventMarketPanel({ events, quoteMap }: Props) {
+export default function EventMarketPanel({ events, quoteMap, emptyState }: Props) {
   if (events.length === 0) {
     return (
       <div className="rounded-lg border border-white/[0.04] p-8 text-center">
-        <p className="text-sm text-zinc-500">No events with market correlations yet.</p>
-        <p className="mt-1 text-[11px] text-zinc-600">Run data ingestion to populate events.</p>
+        <p className="text-sm text-zinc-500">
+          {emptyState?.title ?? "No events with market correlations yet."}
+        </p>
+        <p className="mt-1 text-[11px] text-zinc-600">
+          {emptyState?.hint ?? "Run data ingestion to populate events."}
+        </p>
       </div>
     );
   }
