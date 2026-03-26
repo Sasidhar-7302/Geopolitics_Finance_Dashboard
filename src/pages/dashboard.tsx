@@ -424,7 +424,7 @@ export default function Dashboard() {
         <MetricCard
           label="Events (24h)"
           value={(status?.stats?.recentEvents24h ?? summary.last24h.length).toString()}
-          trend={`${events.length} total monitored`}
+          trend={`${status?.stats?.totalEvents ?? events.length} total monitored`}
           sparkline={[18, 22, 20, 26, 28, 31, 29]}
         />
         <MetricCard
