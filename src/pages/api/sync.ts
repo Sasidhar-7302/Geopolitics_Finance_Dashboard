@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "./auth/[...nextauth]";
 import { ingestEvents } from "../../lib/ingest/events";
+import { isAdminEmail } from "../../lib/admin";
+import { requireApiUser } from "../../lib/serverAuth";
 
 /**
  * Manual sync endpoint - triggers ingestion for authenticated users.
@@ -13,9 +13,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const session = await getServerSession(req, res, authOptions);
-  if (!session) {
-    res.status(401).json({ error: "Unauthorized" });
+  const currentUser = await requireApiUser(req, res);
+  if (!currentUser) {
+    return;
+  }
+  if (!isAdminEmail(currentUser.user.email)) {
+    res.status(403).json({ error: "Only admins can trigger sync in this environment" });
     return;
   }
 

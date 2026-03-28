@@ -1,3 +1,5 @@
+import { getAppUrl } from "../supabase";
+
 let schedulerStarted = false;
 
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
@@ -21,7 +23,7 @@ export function startScheduler() {
   setInterval(async () => {
     console.log("[Scheduler] Starting auto-ingestion at", new Date().toISOString());
     try {
-      const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+      const baseUrl = getAppUrl();
       const res = await fetch(`${baseUrl}/api/cron/ingest`, {
         method: "POST",
         headers: { Authorization: `Bearer ${secret}` },

@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { signIn } from "next-auth/react";
 import { useState } from "react";
 import PublicLayout from "../../components/layout/PublicLayout";
 import InputField from "../../components/ui/InputField";
+import { getSupabaseBrowserClient } from "../../lib/supabase-browser";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -13,16 +13,38 @@ export default function SignIn() {
     event.preventDefault();
     setError("");
 
-    const result = await signIn("credentials", {
-      email,
+    const normalizedEmail = email.trim().toLowerCase();
+    const supabase = getSupabaseBrowserClient();
+
+    const result = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
       password,
-      redirect: false,
-      callbackUrl: "/dashboard",
     });
 
-    if (result?.error) {
-      setError("Invalid credentials. Please try again.");
-      return;
+    if (result.error) {
+      const migrationResponse = await fetch("/api/auth/migrate-legacy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+        }),
+      });
+
+      if (!migrationResponse.ok) {
+        setError("Invalid credentials. Please try again.");
+        return;
+      }
+
+      const retry = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (retry.error) {
+        setError("Your account exists, but sign-in could not be completed yet.");
+        return;
+      }
     }
 
     window.location.href = "/dashboard";
@@ -42,6 +64,7 @@ export default function SignIn() {
               placeholder="Email address"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
               required
             />
             <InputField
@@ -49,6 +72,7 @@ export default function SignIn() {
               placeholder="Password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
               required
             />
             {error ? <p className="text-xs text-danger">{error}</p> : null}

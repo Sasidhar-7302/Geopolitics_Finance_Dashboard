@@ -5,7 +5,7 @@ export type MarketQuote = {
   currency?: string;
 };
 
-// Map symbols to their Google Finance exchange
+// Map symbols to the exchange identifiers used by the fallback scraper
 const EXCHANGE_MAP: Record<string, string> = {
   // NYSEARCA ETFs
   SPY: "NYSEARCA", QQQ: "NASDAQ", GLD: "NYSEARCA", XLE: "NYSEARCA",
@@ -32,14 +32,14 @@ const EXCHANGE_MAP: Record<string, string> = {
 };
 
 /**
- * Fetch live quotes from Google Finance (free, no API key needed).
- * Falls back gracefully for symbols that can't be found.
+ * Fetch delayed quotes through the HTML scraper fallback path.
+ * This is used only when the preferred provider is unavailable or not configured.
  */
 export async function fetchQuotes(symbols: string[]): Promise<MarketQuote[]> {
   if (symbols.length === 0) return [];
   const results: MarketQuote[] = [];
 
-  // Filter out futures symbols (Google Finance doesn't support them)
+  // Filter out futures symbols that the scraper path does not support
   const validSymbols = symbols.filter((s) => !s.includes("="));
 
   // Process in parallel batches of 5
@@ -109,7 +109,7 @@ async function fetchFromGoogle(
     // Try multiple methods to get previous close for % change calculation
     let changePct = 0;
 
-    // Method 1: data-previous-close attribute (older Google Finance)
+    // Method 1: data-previous-close attribute on older page variants
     const prevCloseAttr = html.match(/data-previous-close="([^"]+)"/);
     if (prevCloseAttr) {
       const prevClose = parseFloat(prevCloseAttr[1]);
@@ -118,7 +118,7 @@ async function fetchFromGoogle(
       }
     }
 
-    // Method 2: "Previous close" label followed by P6K39c price class (current Google Finance)
+    // Method 2: "Previous close" label followed by the current price class
     if (changePct === 0) {
       const prevCloseText = html.match(
         /Previous close<\/div>[\s\S]*?class="P6K39c"[^>]*>\$?([\d,.]+)/

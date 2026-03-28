@@ -28,7 +28,7 @@ export default function StockTicker({ items }: { items: TickerItem[] }) {
               {formatCurrency(item.price, item.currency || "USD")}
             </span>
             <span className={`text-[11px] font-bold ${item.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
-              {item.changePct >= 0 ? "+" : ""}{formatPct(item.changePct)}
+              {formatPct(item.changePct)}
             </span>
           </div>
         ))}

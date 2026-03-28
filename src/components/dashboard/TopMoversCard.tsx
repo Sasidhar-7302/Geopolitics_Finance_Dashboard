@@ -36,7 +36,7 @@ export default function TopMoversCard({ quotes }: { quotes: Quote[] }) {
                 {formatCurrency(q.price, q.currency || "USD")}
               </span>
               <span className={`text-[11px] font-bold ${isUp ? "text-emerald" : "text-red-400"}`}>
-                {isUp ? "+" : ""}{formatPct(q.changePct)}
+                {formatPct(q.changePct)}
               </span>
             </div>
           </div>

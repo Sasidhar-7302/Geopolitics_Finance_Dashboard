@@ -6,7 +6,8 @@ import Layout from "../../components/layout/Layout";
 import SeverityBadge from "../../components/ui/SeverityBadge";
 import { getAssetMeta } from "../../lib/assets";
 import { relativeTime, formatPct, formatCurrency } from "../../lib/format";
-import { requireAuth } from "../../lib/requireAuth";
+import { resolvePatternMove } from "../../lib/marketDisplay";
+import { requireAuth } from "../../lib/serverAuth";
 
 // Dynamic import to avoid SSR issues with TradingView
 const TradingViewChart = dynamic(
@@ -119,7 +120,7 @@ export default function StockDetail() {
                 <span className="text-sm text-zinc-500">{assetMeta.name}</span>
               </div>
               <p className="text-[10px] text-zinc-600">
-                {totalEvents} news events · {patterns.length} learned patterns
+                {totalEvents} news events | {patterns.length} learned patterns
               </p>
             </div>
           </div>
@@ -129,7 +130,7 @@ export default function StockDetail() {
                 {formatCurrency(quote.price, quote.currency || "USD")}
               </p>
               <p className={`text-sm font-bold ${quote.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
-                {quote.changePct >= 0 ? "▲" : "▼"} {formatPct(quote.changePct)} today
+                {quote.changePct >= 0 ? "UP" : "DOWN"} {formatPct(quote.changePct)} today
               </p>
             </div>
           ) : (
@@ -144,9 +145,9 @@ export default function StockDetail() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: "News Events", value: totalEvents.toString(), color: "text-white" },
-            { label: "Avg Severity", value: avgSeverity > 0 ? avgSeverity.toFixed(1) + "/10" : "—", color: avgSeverity >= 7 ? "text-red-400" : avgSeverity >= 4 ? "text-amber-400" : "text-emerald" },
-            { label: "Dominant Bias", value: totalEvents > 0 ? dominantDirection : "—", color: dominantDirection === "Bullish" ? "text-emerald" : "text-red-400" },
-            { label: "Pattern Confidence", value: topConfidence > 0 ? `${topConfidence}%` : "—", color: "text-cyan-400" },
+            { label: "Avg Severity", value: avgSeverity > 0 ? avgSeverity.toFixed(1) + "/10" : "N/A", color: avgSeverity >= 7 ? "text-red-400" : avgSeverity >= 4 ? "text-amber-400" : "text-emerald" },
+            { label: "Dominant Bias", value: totalEvents > 0 ? dominantDirection : "N/A", color: dominantDirection === "Bullish" ? "text-emerald" : "text-red-400" },
+            { label: "Pattern Confidence", value: topConfidence > 0 ? `${topConfidence}%` : "N/A", color: "text-cyan-400" },
           ].map((stat) => (
             <div key={stat.label} className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] p-4">
               <p className="text-[10px] uppercase tracking-widest text-zinc-600">{stat.label}</p>
@@ -164,7 +165,7 @@ export default function StockDetail() {
                 News Affecting {upperSymbol}
               </h2>
               <span className="text-[10px] text-zinc-600">
-                {upCount} bullish · {downCount} bearish
+                {upCount} bullish | {downCount} bearish
               </span>
             </div>
 
@@ -187,7 +188,7 @@ export default function StockDetail() {
                         <div className={`mt-0.5 flex h-9 w-12 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
                           isUp ? "bg-emerald/10 text-emerald" : "bg-red-400/10 text-red-400"
                         }`}>
-                          {isUp ? "↑ UP" : "↓ DN"}
+                          {isUp ? "UP" : "DOWN"}
                         </div>
 
                         {/* Event content */}
@@ -200,15 +201,15 @@ export default function StockDetail() {
                           </Link>
                           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-zinc-600">
                             <span>{corr.event.source}</span>
-                            <span>·</span>
+                            <span>|</span>
                             <span>{corr.event.region}</span>
                             {corr.event.countryCode && (
                               <>
-                                <span>·</span>
+                                <span>|</span>
                                 <span className="font-medium text-zinc-500">{corr.event.countryCode}</span>
                               </>
                             )}
-                            <span>·</span>
+                            <span>|</span>
                             <span>{relativeTime(corr.event.publishedAt)}</span>
                           </div>
                           <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2">{corr.event.summary}</p>
@@ -245,33 +246,38 @@ export default function StockDetail() {
               </div>
             ) : (
               <div className="space-y-2">
-                {patterns.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] p-3.5">
-                    <div className="flex items-center justify-between">
-                      <span className="rounded bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                        {p.eventCategory}
-                      </span>
-                      <span className={`text-sm font-bold ${p.direction === "up" ? "text-emerald" : "text-red-400"}`}>
-                        {p.direction === "up" ? "↑" : "↓"} {formatPct(p.avgImpactPct)}
-                      </span>
-                    </div>
-                    <div className="mt-2">
-                      <div className="flex justify-between text-[9px] text-zinc-600">
-                        <span>Confidence</span>
-                        <span>{Math.round(p.confidence * 100)}%</span>
+                {patterns.map((p) => {
+                  const change = resolvePatternMove(p.direction, p.avgImpactPct);
+                  const isUp = change >= 0;
+
+                  return (
+                    <div key={p.id} className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] p-3.5">
+                      <div className="flex items-center justify-between">
+                        <span className="rounded bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                          {p.eventCategory}
+                        </span>
+                        <span className={`text-sm font-bold ${isUp ? "text-emerald" : "text-red-400"}`}>
+                          {isUp ? "UP" : "DOWN"} {formatPct(change)}
+                        </span>
                       </div>
-                      <div className="mt-1 h-1.5 rounded-full bg-white/[0.05]">
-                        <div
-                          className="h-1.5 rounded-full bg-cyan-500/60"
-                          style={{ width: `${Math.round(p.confidence * 100)}%` }}
-                        />
+                      <div className="mt-2">
+                        <div className="flex justify-between text-[9px] text-zinc-600">
+                          <span>Confidence</span>
+                          <span>{Math.round(p.confidence * 100)}%</span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-white/[0.05]">
+                          <div
+                            className="h-1.5 rounded-full bg-cyan-500/60"
+                            style={{ width: `${Math.round(p.confidence * 100)}%` }}
+                          />
+                        </div>
                       </div>
+                      <p className="mt-2 text-[10px] text-zinc-600">
+                        Based on <span className="font-medium text-zinc-400">{p.occurrences}</span> similar {p.eventCategory} events
+                      </p>
                     </div>
-                    <p className="mt-2 text-[10px] text-zinc-600">
-                      Based on <span className="font-medium text-zinc-400">{p.occurrences}</span> similar {p.eventCategory} events
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -280,16 +286,16 @@ export default function StockDetail() {
               <h3 className="text-[11px] font-semibold text-zinc-400">How This Works</h3>
               <div className="mt-2 space-y-2 text-[10px] text-zinc-600 leading-relaxed">
                 <p>
-                  <span className="text-zinc-400">1. News Detection:</span> Events are scraped from 27 RSS feeds across 7 regions, plus GDELT.
+                  <span className="text-zinc-400">1. Event ingestion:</span> GeoPulse collects geopolitical coverage from configured RSS feeds and GDELT, then stores normalized events in Supabase.
                 </p>
                 <p>
-                  <span className="text-zinc-400">2. Keyword Matching:</span> Each event is matched to {upperSymbol} via 113 keyword rules (for example, "oil crisis" to USO or "defense spending" to ITA).
+                  <span className="text-zinc-400">2. Correlation scoring:</span> Each event is linked to {upperSymbol} using asset mappings, category rules, and the system's event-to-market correlation engine.
                 </p>
                 <p>
-                  <span className="text-zinc-400">3. Live Prices:</span> Real-time price data from Google Finance shows actual market movement.
+                  <span className="text-zinc-400">3. Market pricing:</span> Quote data comes from the configured delayed provider when available, then the scraper fallback, then the latest stored snapshot.
                 </p>
                 <p>
-                  <span className="text-zinc-400">4. Pattern Learning:</span> Over time, the system tracks how {upperSymbol} typically reacts to each event category, building confidence scores.
+                  <span className="text-zinc-400">4. Pattern learning:</span> As more linked events accumulate, GeoPulse estimates how {upperSymbol} tends to react to similar categories and shows that confidence level here.
                 </p>
               </div>
             </div>

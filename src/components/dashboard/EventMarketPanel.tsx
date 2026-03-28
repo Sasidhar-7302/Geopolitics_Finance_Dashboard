@@ -4,6 +4,8 @@ import type { Quote } from "../../lib/hooks/useQuotes";
 import SeverityBadge from "../ui/SeverityBadge";
 import SymbolHoverCard from "../ui/SymbolHoverCard";
 import { relativeTime, formatPct, formatCurrency } from "../../lib/format";
+import { resolveCorrelationDisplay } from "../../lib/marketDisplay";
+import { getQuoteBadgeLabel } from "../../lib/marketPresentation";
 
 type Props = {
   events: EventItem[];
@@ -75,6 +77,32 @@ export default function EventMarketPanel({ events, quoteMap, emptyState }: Props
                   </Link>
                 </h3>
                 <p className="mt-0.5 text-[11px] text-zinc-500 line-clamp-1">{event.summary}</p>
+                {event.whyThisMatters && (
+                  <p className="mt-2 rounded-md border border-emerald/10 bg-emerald/5 px-2.5 py-2 text-[11px] text-zinc-300">
+                    <span className="mr-1 font-semibold text-emerald">Why it matters:</span>
+                    {event.whyThisMatters}
+                  </p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+                  <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-zinc-400">
+                    {event.supportingSourcesCount ?? 1} source{(event.supportingSourcesCount ?? 1) === 1 ? "" : "s"}
+                  </span>
+                  {typeof event.sourceReliability === "number" && (
+                    <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-zinc-400">
+                      Source quality {Math.round(event.sourceReliability * 100)}%
+                    </span>
+                  )}
+                  {event.category && (
+                    <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-zinc-400">
+                      {event.category.replace(/-/g, " ")}
+                    </span>
+                  )}
+                  {event.isPremiumInsight && (
+                    <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-amber-300">
+                      Premium-depth story
+                    </span>
+                  )}
+                </div>
               </div>
               <SeverityBadge severity={event.severity ?? 1} />
             </div>
@@ -84,8 +112,14 @@ export default function EventMarketPanel({ events, quoteMap, emptyState }: Props
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {correlations.slice(0, 5).map((corr) => {
                   const quote = quoteMap.get(corr.symbol);
-                  const change = quote?.changePct ?? corr.impactMagnitude;
-                  const isUp = corr.impactDirection === "up" || change > 0;
+                  const display = resolveCorrelationDisplay({
+                    liveChange: quote?.changePct,
+                    impactDirection: corr.impactDirection,
+                    impactMagnitude: corr.impactMagnitude,
+                  });
+                  const change = display.change;
+                  const isUp = change >= 0;
+                  const badgeLabel = quote?.freshness ? getQuoteBadgeLabel(quote.freshness) : display.source;
 
                   return (
                     <SymbolHoverCard key={corr.id} symbol={corr.symbol}>
@@ -101,12 +135,28 @@ export default function EventMarketPanel({ events, quoteMap, emptyState }: Props
                           </span>
                         )}
                         <span className={`text-[11px] font-bold ${isUp ? "text-emerald" : "text-red-400"}`}>
-                          {formatPct(isUp ? Math.abs(change) : -Math.abs(change))}
+                          {formatPct(change)}
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wide text-zinc-600">
+                          {badgeLabel}
                         </span>
                       </Link>
                     </SymbolHoverCard>
                   );
                 })}
+              </div>
+            )}
+
+            {event.url && (
+              <div className="mt-2">
+                <a
+                  href={event.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-medium text-emerald hover:text-emerald/80 transition"
+                >
+                  Open source article
+                </a>
               </div>
             )}
           </div>

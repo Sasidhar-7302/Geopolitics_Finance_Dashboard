@@ -1,32 +1,85 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
+import { buildEventOrderBy, buildEventWhere, parseArrayParam } from "../../lib/eventFilters";
+import { summarizeEventIntelligence } from "../../lib/intelligence";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const take = Math.min(Number(req.query.take) || 50, 200);
-  const severity = Number(req.query.severity) || 0;
-  const region = req.query.region as string | undefined;
-
-  const where: Record<string, unknown> = {};
-  if (severity > 0) where.severity = { gte: severity };
-  if (region) where.region = region;
-
-  const events = await prisma.event.findMany({
-    orderBy: { publishedAt: "desc" },
-    take,
-    where,
-    include: {
-      correlations: {
-        select: {
-          id: true,
-          symbol: true,
-          impactScore: true,
-          impactDirection: true,
-          impactMagnitude: true,
-          window: true,
-        },
-      },
-    },
+  const limit = Math.min(Number(req.query.limit || req.query.take) || 20, 50);
+  const cursor = req.query.cursor as string | undefined;
+  const sort = (req.query.sort as "newest" | "severity" | "relevance" | "support" | undefined) || "relevance";
+  const where = buildEventWhere({
+    q: req.query.q as string | undefined,
+    regions: parseArrayParam(req.query.regions as string | string[] | undefined).concat(
+      parseArrayParam(req.query.region as string | string[] | undefined)
+    ),
+    categories: parseArrayParam(req.query.categories as string | string[] | undefined).concat(
+      parseArrayParam(req.query.category as string | string[] | undefined)
+    ),
+    symbols: parseArrayParam(req.query.symbols as string | string[] | undefined),
+    direction: (req.query.direction as string | undefined) || "all",
+    severityMin: Number(req.query.severityMin || req.query.severity || 0) || 0,
+    from: req.query.from as string | undefined,
+    to: req.query.to as string | undefined,
+    timeWindow: req.query.timeWindow as string | undefined,
+    sort,
+    limit,
+    cursor,
   });
 
-  res.status(200).json({ events });
+  const [events, total] = await Promise.all([
+    prisma.event.findMany({
+      orderBy: buildEventOrderBy(sort),
+      take: limit + 1,
+      where,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: {
+        correlations: {
+          select: {
+            id: true,
+            symbol: true,
+            impactScore: true,
+            impactDirection: true,
+            impactMagnitude: true,
+            window: true,
+            category: true,
+          },
+        },
+      },
+    }),
+    prisma.event.count({ where }),
+  ]);
+
+  const hasMore = events.length > limit;
+  const page = hasMore ? events.slice(0, limit) : events;
+  const nextCursor = hasMore ? page[page.length - 1]?.id : null;
+  const enrichedPage = page.map((event) => {
+    const intelligence = summarizeEventIntelligence({
+      title: event.title,
+      summary: event.summary,
+      region: event.region,
+      category: event.category,
+      severity: event.severity,
+      publishedAt: event.publishedAt,
+      supportingSourcesCount: event.supportingSourcesCount,
+      sourceReliability: event.sourceReliability ?? undefined,
+      symbols: event.correlations.map((corr) => corr.symbol),
+    });
+
+    return {
+      ...event,
+      category: intelligence.category,
+      whyThisMatters: intelligence.whyThisMatters,
+      relevanceScore: intelligence.relevanceScore,
+    };
+  });
+
+  res.status(200).json({
+    events: enrichedPage,
+    pagination: {
+      limit,
+      nextCursor,
+      hasMore,
+      total,
+    },
+  });
 }

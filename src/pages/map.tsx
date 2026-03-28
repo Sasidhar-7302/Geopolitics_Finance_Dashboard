@@ -12,7 +12,7 @@ import SeverityBadge from "../components/ui/SeverityBadge";
 import SymbolHoverCard from "../components/ui/SymbolHoverCard";
 import { useEvents, type EventItem } from "../lib/hooks/useEvents";
 import { relativeTime } from "../lib/format";
-import { requireAuth } from "../lib/requireAuth";
+import { requireAuth } from "../lib/serverAuth";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -428,7 +428,7 @@ export default function MapView() {
                       {correlations.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {correlations.slice(0, 4).map((corr) => {
-                            const isUp = corr.impactDirection === "up" || corr.impactMagnitude > 0;
+                            const isUp = corr.impactDirection !== "down";
                             return (
                               <SymbolHoverCard key={corr.id} symbol={corr.symbol}>
                                 <Link

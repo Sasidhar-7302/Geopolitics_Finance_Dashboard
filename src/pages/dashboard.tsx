@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Layout from "../components/layout/Layout";
 import MetricCard from "../components/ui/MetricCard";
 import SectionCard from "../components/ui/SectionCard";
@@ -7,34 +7,18 @@ import StockTicker from "../components/ui/StockTicker";
 import EventMarketPanel from "../components/dashboard/EventMarketPanel";
 import PatternInsightsCard from "../components/dashboard/PatternInsightsCard";
 import TopMoversCard from "../components/dashboard/TopMoversCard";
-import { getAssetMeta } from "../lib/assets";
+import { categorizeEvent, CATEGORY_RULES } from "../lib/intelligence";
 import { useEvents, type EventItem } from "../lib/hooks/useEvents";
 import { useWatchlists } from "../lib/hooks/useWatchlists";
 import { useQuotes, type Quote } from "../lib/hooks/useQuotes";
 import { useStatus } from "../lib/hooks/useStatus";
 import { usePreferences } from "../lib/hooks/usePreferences";
-import { requireAuth } from "../lib/requireAuth";
+import { useSavedFilters } from "../lib/hooks/useSavedFilters";
+import { useEntitlements } from "../lib/hooks/useEntitlements";
+import { getMarketFreshnessLabel, getMarketProviderLabel } from "../lib/marketPresentation";
+import { requireAuth } from "../lib/serverAuth";
 
 const DEFAULT_WATCHLIST_SYMBOLS = ["SPY", "QQQ", "GLD", "XLE", "TLT", "ITA", "USO", "NVDA"];
-
-const CATEGORIES = [
-  { key: "all", label: "All Events" },
-  { key: "conflict", label: "Conflict & War" },
-  { key: "energy", label: "Energy & Oil" },
-  { key: "economic", label: "Economy" },
-  { key: "sanctions", label: "Sanctions & Tariffs" },
-  { key: "political", label: "Politics" },
-  { key: "technology", label: "Technology" },
-  { key: "defense", label: "Defense" },
-  { key: "cyber", label: "Cybersecurity" },
-  { key: "healthcare", label: "Healthcare" },
-  { key: "climate", label: "Climate" },
-  { key: "agriculture", label: "Agriculture" },
-  { key: "trade", label: "Trade & Shipping" },
-  { key: "threat", label: "Nuclear & Threats" },
-  { key: "science", label: "Science" },
-  { key: "general", label: "General" },
-];
 
 const TIME_WINDOWS = [
   { key: "all", label: "All time" },
@@ -56,7 +40,7 @@ const SORT_OPTIONS = [
   { key: "relevance", label: "Most relevant" },
   { key: "newest", label: "Newest first" },
   { key: "severity", label: "Highest severity" },
-  { key: "move", label: "Largest move" },
+  { key: "support", label: "Most confirmed" },
 ] as const;
 
 const SEVERITY_OPTIONS = [
@@ -69,52 +53,6 @@ const SEVERITY_OPTIONS = [
 type TimeWindowKey = (typeof TIME_WINDOWS)[number]["key"];
 type MarketDirectionKey = (typeof MARKET_DIRECTION_OPTIONS)[number]["key"];
 type SortKey = (typeof SORT_OPTIONS)[number]["key"];
-
-function categorizeEvent(title: string, summary: string): string {
-  const text = `${title} ${summary}`.toLowerCase();
-
-  const rules: Array<{ cat: string; words: string[] }> = [
-    { cat: "conflict", words: ["attack", "missile", "strike", "war", "invasion", "bombing", "airstrike", "troops", "combat", "casualties", "killed", "shelling", "offensive", "ceasefire", "hostilities", "clashes", "battlefield"] },
-    { cat: "defense", words: ["defense", "military", "army", "navy", "warship", "fighter jet", "arms deal", "weapon", "pentagon", "nato", "drone strike", "air force", "marines", "special forces"] },
-    { cat: "energy", words: ["oil", "opec", "pipeline", "natural gas", "energy", "crude", "refinery", "lng", "petroleum", "fuel", "barrel", "drilling", "offshore"] },
-    { cat: "economic", words: ["recession", "inflation", "default", "debt", "bailout", "collapse", "bankruptcy", "crash", "downturn", "unemployment", "interest rate", "central bank", "gdp", "stimulus", "quantitative", "federal reserve", "monetary policy", "bond", "treasury", "stock market"] },
-    { cat: "sanctions", words: ["sanction", "embargo", "tariff", "blacklist", "trade war", "export control", "import duty", "trade ban", "asset freeze", "economic penalty"] },
-    { cat: "political", words: ["election", "protest", "revolution", "unrest", "overthrow", "impeach", "resign", "riot", "vote", "parliament", "congress", "president", "prime minister", "democracy", "authoritarian", "coup", "referendum"] },
-    { cat: "technology", words: ["semiconductor", "chip", "artificial intelligence", "tech", "5g", "quantum", "software", "satellite", "space", "robot", "blockchain", "crypto", "machine learning", "startup", "silicon valley", "data center"] },
-    { cat: "cyber", words: ["cybersecurity", "cyber attack", "hack", "ransomware", "data breach", "malware", "phishing", "encryption", "zero-day", "cyber warfare"] },
-    { cat: "healthcare", words: ["pandemic", "virus", "vaccine", "outbreak", "epidemic", "disease", "drug", "pharmaceutical", "hospital", "health", "fda", "medical", "who", "public health", "clinical trial"] },
-    { cat: "climate", words: ["climate", "carbon", "emissions", "earthquake", "tsunami", "hurricane", "flood", "wildfire", "drought", "renewable", "solar", "environmental", "global warming", "sea level", "deforestation"] },
-    { cat: "agriculture", words: ["wheat", "grain", "crop", "famine", "food crisis", "agriculture", "corn", "soybean", "fertilizer", "harvest", "livestock", "farming"] },
-    { cat: "trade", words: ["shipping", "freight", "maritime", "supply chain", "logistics", "port", "trade deal", "import", "export", "wto", "container", "cargo", "customs"] },
-    { cat: "threat", words: ["nuclear", "atomic", "warhead", "escalation", "terror", "hostage", "assassination", "bioweapon", "chemical weapon", "missile test", "threat level"] },
-    { cat: "science", words: ["research", "discovery", "scientific", "physics", "biology", "astronomy", "genome", "crispr", "nasa", "experiment", "breakthrough", "university study", "laboratory"] },
-  ];
-
-  let bestCat = "general";
-  let bestScore = 0;
-  for (const { cat, words } of rules) {
-    const score = words.filter((word) => text.includes(word)).length;
-    if (score > bestScore) {
-      bestScore = score;
-      bestCat = cat;
-    }
-  }
-  return bestCat;
-}
-
-function matchesTimeWindow(publishedAt: string, windowKey: TimeWindowKey) {
-  if (windowKey === "all") return true;
-
-  const hoursByWindow: Record<Exclude<TimeWindowKey, "all">, number> = {
-    "6h": 6,
-    "24h": 24,
-    "3d": 72,
-    "7d": 168,
-  };
-
-  const published = new Date(publishedAt).getTime();
-  return Date.now() - published <= hoursByWindow[windowKey] * 60 * 60 * 1000;
-}
 
 function getEventMarketDirection(event: EventItem, quoteMap: Map<string, Quote>): Exclude<MarketDirectionKey, "all"> {
   const correlations = event.correlations ?? [];
@@ -134,14 +72,6 @@ function getEventMarketDirection(event: EventItem, quoteMap: Map<string, Quote>)
 
     if (corr.impactDirection === "up") hasUp = true;
     if (corr.impactDirection === "down") hasDown = true;
-    if (corr.impactDirection === "mixed") {
-      hasUp = true;
-      hasDown = true;
-    }
-    if (corr.impactDirection !== "up" && corr.impactDirection !== "down" && corr.impactDirection !== "mixed") {
-      if (corr.impactMagnitude > 0) hasUp = true;
-      if (corr.impactMagnitude < 0) hasDown = true;
-    }
   }
 
   if (hasUp && hasDown) return "mixed";
@@ -161,52 +91,37 @@ function getEventStrongestMove(event: EventItem, quoteMap: Map<string, Quote>) {
   }, 0);
 }
 
-function matchesSearch(event: EventItem, searchQuery: string) {
-  const query = searchQuery.trim().toLowerCase();
-  if (!query) return true;
-
-  const correlationText = (event.correlations ?? [])
-    .map((corr) => {
-      const meta = getAssetMeta(corr.symbol);
-      return `${corr.symbol} ${meta.name} ${meta.focus}`;
-    })
-    .join(" ");
-
-  const haystack = [
-    event.title,
-    event.summary,
-    event.source,
-    event.region,
-    event.countryCode ?? "",
-    correlationText,
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(query);
-}
-
 export default function Dashboard() {
-  const { events, isLoading } = useEvents();
   const { watchlists } = useWatchlists();
   const { status } = useStatus();
   const { preferences, isLoading: prefsLoading } = usePreferences();
+  const { savedFilters, saveFilter, removeFilter } = useSavedFilters();
+  const { entitlements } = useEntitlements();
 
   const [activeCategory, setActiveCategory] = useState("for-you");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("all");
   const [selectedSeverity, setSelectedSeverity] = useState("all");
-  const [selectedTimeWindow, setSelectedTimeWindow] = useState<TimeWindowKey>("all");
+  const [selectedTimeWindow, setSelectedTimeWindow] = useState<TimeWindowKey>("24h");
   const [selectedMarketDirection, setSelectedMarketDirection] = useState<MarketDirectionKey>("all");
   const [selectedSort, setSelectedSort] = useState<SortKey>("relevance");
+  const [saveViewName, setSaveViewName] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "done" | "error">("idle");
 
-  useEffect(() => {
-    if (!prefsLoading && !preferences.onboarded && preferences.categories.length === 0) {
-      setActiveCategory("all");
-    }
-  }, [prefsLoading, preferences]);
+  const hasPreferences = preferences.categories.length > 0 || preferences.regions.length > 0 || preferences.symbols.length > 0;
 
-  const hasPreferences = preferences.categories.length > 0;
+  const eventQuery = useMemo(() => ({
+    q: searchQuery.trim() || undefined,
+    regions: selectedRegion !== "all" ? [selectedRegion] : undefined,
+    categories: activeCategory !== "all" && activeCategory !== "for-you" ? [activeCategory] : undefined,
+    direction: selectedMarketDirection,
+    severityMin: selectedSeverity === "all" ? 0 : Number(selectedSeverity),
+    timeWindow: selectedTimeWindow,
+    sort: selectedSort,
+    limit: activeCategory === "for-you" ? 40 : 20,
+  }), [activeCategory, searchQuery, selectedMarketDirection, selectedRegion, selectedSeverity, selectedSort, selectedTimeWindow]);
+
+  const { events: fetchedEvents, isLoading, pagination } = useEvents(eventQuery);
 
   const allSymbols = useMemo(() => {
     const symbols = new Set<string>(DEFAULT_WATCHLIST_SYMBOLS);
@@ -215,14 +130,13 @@ export default function Dashboard() {
       watchlists[0].items.forEach((item) => symbols.add(item.symbol));
     }
 
-    events.forEach((event) => {
-      event.correlations?.forEach((corr) => symbols.add(corr.symbol));
-    });
+    preferences.symbols.forEach((symbol) => symbols.add(symbol));
+    fetchedEvents.forEach((event) => event.correlations?.forEach((corr) => symbols.add(corr.symbol)));
 
     return Array.from(symbols);
-  }, [events, watchlists]);
+  }, [fetchedEvents, preferences.symbols, watchlists]);
 
-  const { quotes } = useQuotes(allSymbols);
+  const { quotes, meta: quoteMeta } = useQuotes(allSymbols);
 
   const quoteMap = useMemo(() => {
     const map = new Map<string, Quote>();
@@ -230,119 +144,51 @@ export default function Dashboard() {
     return map;
   }, [quotes]);
 
-  const { categorized, summary } = useMemo(() => {
-    const catMap = new Map<string, typeof events>();
+  const events = useMemo(() => {
+    if (activeCategory !== "for-you" || !hasPreferences) return fetchedEvents;
+
+    return fetchedEvents
+      .filter((event) => {
+        if (preferences.categories.includes(event.category || categorizeEvent(event.title, event.summary))) return true;
+        if (preferences.regions.includes(event.region)) return true;
+        if (event.correlations?.some((corr) => preferences.symbols.includes(corr.symbol))) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const aScore = (a.relevanceScore ?? 0) + (a.supportingSourcesCount ?? 0);
+        const bScore = (b.relevanceScore ?? 0) + (b.supportingSourcesCount ?? 0);
+        return bScore - aScore;
+      });
+  }, [activeCategory, fetchedEvents, hasPreferences, preferences]);
+
+  const matchingEventsCount = activeCategory === "for-you" ? events.length : (pagination?.total ?? events.length);
+
+  const availableRegions = useMemo(() => {
+    return Array.from(new Set(fetchedEvents.map((event) => event.region).filter(Boolean))).sort();
+  }, [fetchedEvents]);
+
+  const summary = useMemo(() => {
     const now = Date.now();
-
-    for (const event of events) {
-      const category = categorizeEvent(event.title, event.summary);
-      if (!catMap.has(category)) catMap.set(category, []);
-      catMap.get(category)!.push(event);
-    }
-
-    const last24h = events.filter(
-      (event) => now - new Date(event.publishedAt).getTime() < 24 * 60 * 60 * 1000
-    );
+    const last24h = events.filter((event) => now - new Date(event.publishedAt).getTime() < 24 * 60 * 60 * 1000);
     const highSeverity = events.filter((event) => (event.severity ?? 0) >= 7);
-    const correlationCount = events.reduce(
-      (total, event) => total + (event.correlations?.length ?? 0),
-      0
-    );
+    const correlationCount = events.reduce((total, event) => total + (event.correlations?.length ?? 0), 0);
 
     const categoryCounts: Record<string, number> = {};
-    for (const [category, categoryEvents] of catMap) {
-      categoryCounts[category] = categoryEvents.length;
+    for (const event of events) {
+      const category = event.category || categorizeEvent(event.title, event.summary);
+      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
     }
 
     return {
-      categorized: catMap,
-      summary: { last24h, highSeverity, correlationCount, categoryCounts },
+      last24h,
+      highSeverity,
+      correlationCount,
+      categoryCounts,
     };
   }, [events]);
 
-  const availableRegions = useMemo(() => {
-    return Array.from(
-      new Set(events.map((event) => event.region).filter(Boolean))
-    ).sort();
-  }, [events]);
-
-  const categoryScopedEvents = useMemo(() => {
-    if (activeCategory === "for-you" && hasPreferences) {
-      const preferredCategories = new Set(preferences.categories);
-      const preferredRegions = new Set(preferences.regions);
-
-      return events.filter((event) => {
-        const category = categorizeEvent(event.title, event.summary);
-        if (preferredCategories.has(category)) return true;
-        if (preferredRegions.has(event.region)) return true;
-        if (
-          preferences.symbols.length > 0 &&
-          event.correlations?.some((corr) => preferences.symbols.includes(corr.symbol))
-        ) {
-          return true;
-        }
-        return false;
-      });
-    }
-
-    if (activeCategory === "all" || activeCategory === "for-you") {
-      return events;
-    }
-
-    return categorized.get(activeCategory) ?? [];
-  }, [activeCategory, categorized, events, hasPreferences, preferences]);
-
-  const constraintFilteredEvents = useMemo(() => {
-    return categoryScopedEvents.filter((event) => {
-      if (!matchesTimeWindow(event.publishedAt, selectedTimeWindow)) return false;
-      if (selectedSeverity !== "all" && (event.severity ?? 0) < Number(selectedSeverity)) return false;
-      if (selectedMarketDirection !== "all") {
-        const marketDirection = getEventMarketDirection(event, quoteMap);
-        if (marketDirection !== selectedMarketDirection) return false;
-      }
-      if (!matchesSearch(event, searchQuery)) return false;
-      return true;
-    });
-  }, [categoryScopedEvents, quoteMap, searchQuery, selectedMarketDirection, selectedSeverity, selectedTimeWindow]);
-
-  const regionFilteredEvents = useMemo(() => {
-    if (selectedRegion === "all") return constraintFilteredEvents;
-    return constraintFilteredEvents.filter((event) => event.region === selectedRegion);
-  }, [constraintFilteredEvents, selectedRegion]);
-
-  const sortedFilteredEvents = useMemo(() => {
-    return [...regionFilteredEvents].sort((a, b) => {
-      if (selectedSort === "newest") {
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      }
-
-      if (selectedSort === "severity") {
-        const severityDiff = (b.severity ?? 0) - (a.severity ?? 0);
-        if (severityDiff !== 0) return severityDiff;
-        return (b.correlations?.length ?? 0) - (a.correlations?.length ?? 0);
-      }
-
-      if (selectedSort === "move") {
-        const moveDiff = getEventStrongestMove(b, quoteMap) - getEventStrongestMove(a, quoteMap);
-        if (moveDiff !== 0) return moveDiff;
-        return (b.severity ?? 0) - (a.severity ?? 0);
-      }
-
-      const correlationDiff = (b.correlations?.length ?? 0) - (a.correlations?.length ?? 0);
-      if (correlationDiff !== 0) return correlationDiff;
-
-      const severityDiff = (b.severity ?? 0) - (a.severity ?? 0);
-      if (severityDiff !== 0) return severityDiff;
-
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-    });
-  }, [quoteMap, regionFilteredEvents, selectedSort]);
-
-  const filteredEvents = useMemo(() => sortedFilteredEvents.slice(0, 20), [sortedFilteredEvents]);
-  const matchingEventsCount = regionFilteredEvents.length;
-
   const topRegions = useMemo(() => {
-    const counts = constraintFilteredEvents.reduce<Record<string, number>>((acc, event) => {
+    const counts = events.reduce<Record<string, number>>((acc, event) => {
       const key = event.region || "Global";
       acc[key] = (acc[key] || 0) + 1;
       return acc;
@@ -352,24 +198,21 @@ export default function Dashboard() {
       .map(([region, count]) => ({ region, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
-  }, [constraintFilteredEvents]);
+  }, [events]);
 
   const maxRegionCount = Math.max(...topRegions.map((item) => item.count), 1);
   const tickerItems = quotes.filter((quote) => quote.price > 0);
 
-  const hasFilterConstraints = Boolean(searchQuery.trim())
-    || selectedRegion !== "all"
-    || selectedSeverity !== "all"
-    || selectedTimeWindow !== "all"
-    || selectedMarketDirection !== "all";
-  const hasAdvancedControlsActive = hasFilterConstraints || selectedSort !== "relevance";
-
   const filterSummary = useMemo(() => {
-    const summaryParts = [];
+    const summaryParts: string[] = [];
     const timeLabel = TIME_WINDOWS.find((item) => item.key === selectedTimeWindow)?.label;
     const directionLabel = MARKET_DIRECTION_OPTIONS.find((item) => item.key === selectedMarketDirection)?.label;
     const sortLabel = SORT_OPTIONS.find((item) => item.key === selectedSort)?.label;
 
+    if (activeCategory === "for-you") summaryParts.push("Feed: For You");
+    if (activeCategory !== "all" && activeCategory !== "for-you") {
+      summaryParts.push(`Category: ${CATEGORY_RULES.find((item) => item.key === activeCategory)?.label || activeCategory}`);
+    }
     if (selectedTimeWindow !== "all" && timeLabel) summaryParts.push(`Published: ${timeLabel}`);
     if (selectedRegion !== "all") summaryParts.push(`Region: ${selectedRegion}`);
     if (selectedSeverity !== "all") summaryParts.push(`Severity: ${selectedSeverity}+`);
@@ -378,43 +221,91 @@ export default function Dashboard() {
     if (selectedSort !== "relevance" && sortLabel) summaryParts.push(`Sort: ${sortLabel}`);
 
     return summaryParts;
-  }, [searchQuery, selectedMarketDirection, selectedRegion, selectedSeverity, selectedSort, selectedTimeWindow]);
+  }, [activeCategory, searchQuery, selectedMarketDirection, selectedRegion, selectedSeverity, selectedSort, selectedTimeWindow]);
 
   const emptyState = useMemo(() => {
     if (matchingEventsCount > 0) return undefined;
 
-    if (activeCategory === "for-you" && hasPreferences && !hasFilterConstraints) {
+    if (activeCategory === "for-you" && hasPreferences) {
       return {
-        title: "No events match your personalized feed right now.",
-        hint: "Try All Events or broaden your interests in Settings.",
+        title: "No stories match your current interests right now.",
+        hint: "Broaden your topics or regions in Settings, or switch to All Events.",
       };
     }
 
-    if (hasFilterConstraints) {
-      return {
-        title: "No events match these dashboard filters.",
-        hint: "Try widening the time window, removing a region filter, or relaxing the market direction.",
-      };
-    }
-
-    if (activeCategory !== "all") {
-      return {
-        title: "No events are available in this category right now.",
-        hint: "Switch to another category or return to All Events.",
-      };
-    }
-
-    return undefined;
-  }, [activeCategory, hasFilterConstraints, hasPreferences, matchingEventsCount]);
+    return {
+      title: "No stories match the current dashboard view.",
+      hint: "Reset filters or widen the time window.",
+    };
+  }, [activeCategory, hasPreferences, matchingEventsCount]);
 
   const clearDashboardFilters = () => {
     setSearchQuery("");
     setSelectedRegion("all");
     setSelectedSeverity("all");
-    setSelectedTimeWindow("all");
+    setSelectedTimeWindow("24h");
     setSelectedMarketDirection("all");
     setSelectedSort("relevance");
+    setActiveCategory(hasPreferences ? "for-you" : "all");
   };
+
+  const applySavedView = (view: {
+    query?: string | null;
+    regions: string[];
+    categories: string[];
+    direction: string;
+    severityMin: number;
+    timeWindow: string;
+    sortKey: string;
+  }) => {
+    setSearchQuery(view.query || "");
+    setSelectedRegion(view.regions[0] || "all");
+    setActiveCategory(view.categories[0] || "all");
+    setSelectedMarketDirection((view.direction as MarketDirectionKey) || "all");
+    setSelectedSeverity(view.severityMin > 0 ? String(view.severityMin) : "all");
+    setSelectedTimeWindow((view.timeWindow as TimeWindowKey) || "24h");
+    setSelectedSort((view.sortKey as SortKey) || "relevance");
+  };
+
+  const handleSaveCurrentView = async () => {
+    if (!saveViewName.trim()) return;
+
+    setSaveState("saving");
+    try {
+      const response = await saveFilter({
+        name: saveViewName.trim(),
+        query: searchQuery.trim() || null,
+        regions: selectedRegion !== "all" ? [selectedRegion] : [],
+        categories: activeCategory !== "all" ? [activeCategory] : [],
+        symbols: [],
+        direction: selectedMarketDirection,
+        severityMin: selectedSeverity === "all" ? 0 : Number(selectedSeverity),
+        timeWindow: selectedTimeWindow,
+        sortKey: selectedSort,
+        isPinned: false,
+      });
+
+      if (response?.error) {
+        throw new Error(response.error);
+      }
+
+      setSaveViewName("");
+      setSaveState("done");
+      setTimeout(() => setSaveState("idle"), 1600);
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  const hasFilterConstraints = Boolean(searchQuery.trim())
+    || selectedRegion !== "all"
+    || selectedSeverity !== "all"
+    || selectedTimeWindow !== "24h"
+    || selectedMarketDirection !== "all"
+    || activeCategory !== (hasPreferences ? "for-you" : "all");
+
+  const quoteStatusLabel = getMarketFreshnessLabel(quoteMeta?.freshness);
+  const quoteProviderLabel = getMarketProviderLabel(quoteMeta?.provider);
 
   return (
     <Layout>
@@ -442,30 +333,30 @@ export default function Dashboard() {
           sparkline={[12, 15, 18, 16, 22, 25, 24]}
         />
         <MetricCard
-          label="Patterns"
-          value={(status?.stats?.totalPatterns ?? 0).toString()}
-          trend="Learned from history"
+          label="Source Health"
+          value={(status?.stats?.degradedSources ?? 0).toString()}
+          trend="Feeds needing attention"
           tone="ocean"
-          sparkline={[2, 4, 5, 8, 10, 12, 15]}
+          sparkline={[1, 0, 1, 2, 1, 0, 1]}
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <SectionCard
-          title="Events & Market Impact"
-          subtitle={`News events with correlated stock movements · ${matchingEventsCount} matching`}
+          title="Risk Radar"
+          subtitle={`Understand what happened, why markets care, and what to watch next. ${matchingEventsCount} matching stories.`}
           action={
             <>
-              {hasAdvancedControlsActive && (
-                <button
-                  onClick={clearDashboardFilters}
-                  className="ghost-chip hover:bg-white/[0.06]"
-                >
+              <span className="ghost-chip border border-white/[0.08] bg-white/[0.03]">
+                Market data: {quoteStatusLabel}
+              </span>
+              {hasFilterConstraints && (
+                <button onClick={clearDashboardFilters} className="ghost-chip hover:bg-white/[0.06]">
                   Reset filters
                 </button>
               )}
               <Link href="/timeline" className="ghost-chip hover:bg-white/[0.06]">
-                View all
+                Timeline
               </Link>
             </>
           }
@@ -483,9 +374,19 @@ export default function Dashboard() {
                 For You
               </button>
             )}
-            {CATEGORIES.map(({ key, label }) => {
-              const count = key === "all" ? events.length : (summary.categoryCounts[key] ?? 0);
-              if (key !== "all" && count === 0) return null;
+            <button
+              onClick={() => setActiveCategory("all")}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
+                activeCategory === "all"
+                  ? "border border-emerald/30 bg-emerald/15 text-emerald"
+                  : "border border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
+              }`}
+            >
+              All Events
+            </button>
+            {CATEGORY_RULES.map(({ key, label }) => {
+              const count = summary.categoryCounts[key] ?? 0;
+              if (count === 0) return null;
 
               const isActive = activeCategory === key;
               return (
@@ -499,9 +400,7 @@ export default function Dashboard() {
                   }`}
                 >
                   {label}
-                  <span className={`text-[10px] ${isActive ? "text-emerald/70" : "text-zinc-600"}`}>
-                    {count}
-                  </span>
+                  <span className={`text-[10px] ${isActive ? "text-emerald/70" : "text-zinc-600"}`}>{count}</span>
                 </button>
               );
             })}
@@ -512,7 +411,7 @@ export default function Dashboard() {
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search headlines, sources, regions, or symbols..."
+                placeholder="Search stories, sources, regions, or symbols..."
                 className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald/30 focus:outline-none xl:max-w-sm"
               />
 
@@ -602,29 +501,112 @@ export default function Dashboard() {
                     </span>
                   ))
                 ) : (
-                  <span className="text-[11px] text-zinc-600">
-                    No extra filters applied.
-                  </span>
+                  <span className="text-[11px] text-zinc-600">Default dashboard view.</span>
                 )}
               </div>
 
               <p className="text-[11px] text-zinc-600">
-                {matchingEventsCount > filteredEvents.length
-                  ? `${matchingEventsCount} matches · showing top ${filteredEvents.length}`
-                  : `${matchingEventsCount} matches`}
+                {matchingEventsCount} matching stories
               </p>
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 lg:flex-row lg:items-center">
+              <input
+                value={saveViewName}
+                onChange={(event) => setSaveViewName(event.target.value)}
+                placeholder="Save this dashboard view as..."
+                className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald/30 focus:outline-none"
+              />
+              <button
+                onClick={handleSaveCurrentView}
+                disabled={!saveViewName.trim() || saveState === "saving"}
+                className="btn-primary whitespace-nowrap disabled:opacity-50"
+              >
+                {saveState === "saving" ? "Saving..." : "Save view"}
+              </button>
+              {saveState === "done" && <span className="text-[11px] text-emerald">Saved.</span>}
+              {saveState === "error" && <span className="text-[11px] text-red-400">Could not save.</span>}
             </div>
           </div>
 
           <EventMarketPanel
-            events={filteredEvents}
+            events={events.slice(0, 20)}
             quoteMap={quoteMap}
             emptyState={emptyState}
           />
         </SectionCard>
 
         <div className="space-y-4">
-          <SectionCard title="Top Movers" subtitle="Highest absolute % change">
+          <SectionCard
+            title="Morning Brief"
+            subtitle={`Daily briefing at ${preferences.digestHour}:00 ${preferences.timezone}${preferences.emailDigestEnabled ? " via email" : ""}`}
+            action={<Link href="/digest" className="ghost-chip hover:bg-white/[0.06]">Open digest</Link>}
+          >
+            <div className="space-y-2">
+              {events.slice(0, 3).map((event) => (
+                <Link
+                  href={`/event/${event.id}`}
+                  key={event.id}
+                  className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
+                >
+                  <p className="text-xs font-semibold text-white">{event.title}</p>
+                  <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2">
+                    {event.whyThisMatters || event.summary}
+                  </p>
+                </Link>
+              ))}
+              {events.length === 0 && (
+                <p className="py-4 text-center text-[11px] text-zinc-600">
+                  Your morning brief will populate after the next ingestion cycle.
+                </p>
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Saved Views"
+            subtitle={`Reusable filters for the dashboard, digest, and alerts${entitlements?.limits?.savedViews ? ` | ${savedFilters.length}/${entitlements.limits.savedViews} used` : ""}`}
+          >
+            {savedFilters.length === 0 ? (
+              <p className="py-4 text-center text-[11px] text-zinc-600">
+                Save a dashboard view to quickly revisit a region, sector, or risk setup.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {savedFilters.map((view) => (
+                  <div
+                    key={view.id}
+                    className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        onClick={() => applySavedView(view)}
+                        className="min-w-0 text-left"
+                      >
+                        <p className="truncate text-xs font-semibold text-white">{view.name}</p>
+                        <p className="mt-1 text-[10px] text-zinc-600">
+                          {[view.categories[0], view.regions[0], view.direction !== "all" ? view.direction : "", view.timeWindow !== "all" ? view.timeWindow : ""]
+                            .filter(Boolean)
+                            .join(" | ") || "Broad dashboard view"}
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => removeFilter(view.id)}
+                        className="text-[10px] text-zinc-600 hover:text-zinc-300 transition"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Top Movers"
+            subtitle={`Highest absolute % change | ${quoteProviderLabel}`}
+          >
             <TopMoversCard quotes={quotes} />
           </SectionCard>
 
@@ -687,10 +669,47 @@ export default function Dashboard() {
               </div>
             )}
           </SectionCard>
+
+          <SectionCard
+            title="Account Access"
+            subtitle={entitlements?.premiumActive ? "Premium is active." : "Free accounts get the full core workflow. Premium increases limits and briefing depth."}
+          >
+            <div className="space-y-2 text-[11px] text-zinc-500">
+              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+                <span>Plan</span>
+                <span className="font-semibold text-white">
+                  {entitlements?.premiumActive ? "Premium" : entitlements?.betaUnlocked ? "Free Beta" : "Free"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+                <span>Saved views</span>
+                <span className="font-semibold text-white">
+                  {entitlements?.limits?.savedViews === null ? "Unlimited" : `${savedFilters.length}/${entitlements?.limits?.savedViews ?? 3}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+                <span>Alert capacity</span>
+                <span className="font-semibold text-white">
+                  {entitlements?.limits?.alerts === null ? "Unlimited" : `${entitlements?.limits?.alerts ?? 3} active`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+                <span>Founding beta</span>
+                <span className="font-semibold text-white">
+                  {entitlements?.betaSpotsRemaining && entitlements.betaSpotsRemaining > 0
+                    ? `${entitlements.betaSpotsRemaining} spots left`
+                    : "Closed"}
+                </span>
+              </div>
+              <p className="pt-1 text-[11px] text-zinc-600">
+                The anonymous homepage shows a live preview. Free accounts unlock the full dashboard. Premium is priced at $8/month or $79/year when billing is enabled.
+              </p>
+            </div>
+          </SectionCard>
         </div>
       </div>
 
-      {isLoading && (
+      {(isLoading || prefsLoading) && (
         <p className="text-center text-xs text-zinc-500 animate-pulse">
           Loading intelligence data...
         </p>

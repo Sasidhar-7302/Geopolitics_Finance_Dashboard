@@ -7,6 +7,9 @@ export type Quote = {
   price: number;
   changePct: number;
   currency?: string;
+  provider?: string;
+  freshness?: "live" | "delayed" | "snapshot";
+  timestamp?: string;
 };
 
 export function useQuotes(symbols: string[]) {
@@ -17,6 +20,7 @@ export function useQuotes(symbols: string[]) {
 
   return {
     quotes: (data?.quotes ?? []) as Quote[],
+    meta: data?.meta as { provider: string; freshness: "live" | "delayed" | "snapshot"; cached: boolean } | undefined,
     isLoading,
     error,
   };

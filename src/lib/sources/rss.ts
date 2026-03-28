@@ -2,12 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import Parser from "rss-parser";
 import { estimateSeverity } from "../scoring/severity";
+import { recordSourceHealth } from "../ingest/sourceHealth";
 
 export type RssEvent = {
   title: string;
   summary: string;
   source: string;
   url: string;
+  feedGuid?: string;
   publishedAt: Date;
   region: string;
   countryCode?: string;
@@ -154,26 +156,43 @@ export async function fetchRssEvents(): Promise<RssEvent[]> {
   const results: RssEvent[] = [];
 
   for (const feed of feeds) {
+    const startedAt = Date.now();
     try {
       const feedData = await parser.parseURL(feed.url);
+      const sourceName = feed.name || feedData.title || "RSS";
+
       for (const item of feedData.items.slice(0, 20)) {
         if (!item.link || !item.title) continue;
         const publishedAt = item.isoDate ? new Date(item.isoDate) : new Date();
         const summary = (item.contentSnippet || item.content || "").slice(0, 400);
-        const sourceName = feed.name || feedData.title || "RSS";
         const detected = detectCountry(item.title, summary, feed.region || "Global", feed.countryCode);
         results.push({
           title: item.title,
           summary,
           source: sourceName,
           url: item.link,
+          feedGuid: item.guid || item.id,
           publishedAt,
           region: detected.region,
           countryCode: detected.countryCode,
           severity: estimateSeverity(item.title, summary, sourceName),
         });
       }
+
+      await recordSourceHealth({
+        source: sourceName,
+        feedUrl: feed.url,
+        status: "ok",
+        latencyMs: Date.now() - startedAt,
+      });
     } catch (err) {
+      await recordSourceHealth({
+        source: feed.name,
+        feedUrl: feed.url,
+        status: "failed",
+        latencyMs: Date.now() - startedAt,
+        error: (err as Error).message,
+      });
       console.warn(`[RSS] Failed to fetch ${feed.name}: ${(err as Error).message}`);
     }
   }

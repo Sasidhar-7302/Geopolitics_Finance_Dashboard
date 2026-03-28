@@ -1,6 +1,6 @@
-# GeoPulse Intelligence
+# GeoPulse
 
-GeoPulse is a geopolitical intelligence dashboard that connects breaking world events to market reactions. It ingests news, scores severity and sentiment, maps events to stocks and ETFs, and presents the result through a live dashboard, daily digest, world map, and asset detail pages.
+GeoPulse is a geopolitical intelligence product for finance-curious investors. It tracks breaking world events, explains why they matter, connects them to affected assets, and turns the result into a dashboard, morning brief, saved views, watchlists, alerts, and trust-oriented event detail pages.
 
 [Live App](https://geopolitics-finance-dashboard.vercel.app) | [Setup Guide](docs/setup-guide.md) | [API Reference](docs/api-reference.md) | [Architecture](docs/architecture.md)
 
@@ -10,212 +10,170 @@ GeoPulse is a geopolitical intelligence dashboard that connects breaking world e
 
 ![GeoPulse dashboard](docs/images/dashboard.png)
 
-### Daily Digest
+### Morning Brief
 
 ![GeoPulse daily digest](docs/images/digest.png)
 
-### Global Threat Map
+### Global Map
 
 ![GeoPulse global threat map](docs/images/map.png)
 
-## Why GeoPulse
+## Product Focus
 
-Financial markets react to conflict, sanctions, energy shocks, elections, and supply-chain disruptions constantly, but most people only see the headline or the price move, not the connection between them.
+GeoPulse is built around one core job:
 
-GeoPulse closes that gap by:
+> Understand what happened, why markets care, and what to watch next.
 
-- ingesting geopolitical coverage from RSS sources plus GDELT
-- scoring events for severity and sentiment
-- linking events to affected assets through a rule-based correlation engine
-- learning repeat patterns from historical event-to-asset behavior
-- surfacing everything in a product that is readable without a Bloomberg terminal
+The current product is optimized for:
 
-## What The App Includes
+- high-signal geopolitical event tracking
+- finance-first market context instead of generic news browsing
+- fast trust checks through source count, related coverage, and freshness labels
+- habit-forming workflows such as a morning brief and reusable saved views
+- a public preview that proves the product before signup
 
-- A live dashboard with event streams, market-impact chips, top movers, and learned pattern insights
-- A daily digest view for high-signal summaries and regional/category breakdowns
-- A global map that clusters events by country and shows related assets per location
-- Stock and ETF detail pages with price context, related events, and pattern confidence
-- Personalized onboarding and saved preferences for topics, regions, and symbols
-- Manual sync plus scheduled ingestion for keeping the pipeline fresh
+## What Is Implemented
 
-## Core Capabilities
+- Dashboard with server-side filters for search, date/time window, region, category, severity, symbols, and market direction
+- Anonymous homepage preview with live high-signal stories, hotspots, and market snapshot cards
+- Morning Brief page with personalized ranking based on user preferences and plan limits
+- Saved views backed by durable `SavedFilter` records instead of temporary local UI state
+- Free-vs-premium entitlement scaffolding with a real anonymous preview, free core workflow, and Stripe checkout, portal, and webhook routes
+- Watchlist and alert limits enforced from entitlements instead of UI-only messaging
+- Event trust metadata including duplicate coverage, source count, source reliability, and plain-English "why it matters"
+- Quote provider abstraction with delayed-provider support, scraper fallback, and persistent snapshot fallback
+- Per-symbol quote gap filling from stored snapshots so missing provider symbols do not degrade to fake zero prices
+- Source health and staged ingestion jobs for operational visibility
+- Status API normalization so `lastJob` cannot contradict a newer successful `lastIngestion`
 
-### Intelligence Pipeline
+## Stack
 
-- News ingestion from configured RSS feeds plus GDELT
-- URL-based deduplication before persistence
-- Local sentiment analysis using VADER
-- Severity scoring across multiple event signals
-- Historical pattern aggregation for repeated event categories and symbols
-
-### Market Correlation Engine
-
-- 113 keyword-to-symbol mappings across major geopolitical themes
-- Support for sector ETFs, commodity proxies, country ETFs, and selected equities
-- Live quote fetching through Google Finance scraping
-- Bi-directional navigation from events to assets and assets back to events
-
-### Product Experience
-
-- Authenticated dashboard experience with preferences
-- Interactive world map and regional drill-down
-- TradingView embeds on asset pages
-- Responsive dark UI optimized for dense information
-- Hover metadata for ticker abbreviations so symbol-only views stay understandable
-
-## Tech Stack
-
-- Next.js 16 with the Pages Router
-- React 18 and TypeScript
+- Next.js 16 Pages Router
+- React 18 + TypeScript
 - Prisma ORM
 - Supabase PostgreSQL
-- NextAuth credentials auth with JWT sessions
+- Supabase Auth with server-side session cookies
 - Tailwind CSS
-- SWR for data fetching and refresh
-- react-simple-maps for the world map
-- TradingView embeds for market charts
+- SWR
+- TradingView embeds
+- Vercel deployment and cron entrypoints
 
 ## Architecture
 
 ```mermaid
 graph LR
-    RSS[RSS Feeds] --> ING[Ingestion Engine]
-    GDELT[GDELT API] --> ING
-    ING --> DB[(Supabase PostgreSQL)]
-    ING --> COR[Correlation Engine]
-    COR --> DB
-    COR --> PAT[Pattern Learning]
-    PAT --> DB
-    ING --> SEN[Sentiment + Severity]
-    SEN --> DB
+    RSS[RSS Feeds] --> FETCH[Fetch + Normalize]
+    GDELT[GDELT API] --> FETCH
+    FETCH --> ENRICH[Category, Tags, Trust, Why It Matters]
+    ENRICH --> DB[(Supabase Postgres)]
+    DB --> CORR[Correlation Engine]
+    CORR --> DB
+    DB --> DIGEST[Morning Brief Builder]
     DB --> API[Next.js API Routes]
-    API --> UI[Dashboard, Digest, Map, Asset Pages]
+    API --> UI[Dashboard, Brief, Map, Asset Pages]
 ```
 
 ## Getting Started
-
-### 1. Clone and install
 
 ```bash
 git clone https://github.com/Sasidhar-7302/Geopolitics_Finance_Dashboard.git
 cd Geopolitics_Finance_Dashboard
 npm install
-```
-
-### 2. Create your environment file
-
-```bash
 cp .env.example .env
-```
-
-Fill in:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL`
-- `CRON_SECRET`
-
-### 3. Generate Prisma and prepare the database
-
-```bash
-npx prisma generate
-npx prisma db push
-```
-
-### 4. Run the app
-
-```bash
+npx prisma migrate deploy
 npm run dev
 ```
 
 Open `http://localhost:3000`.
 
-## Environment Variables
+## Required Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | Supabase pooled connection string, typically port `6543` |
-| `DIRECT_URL` | Yes | Supabase direct/session connection string, typically port `5432` |
-| `NEXTAUTH_SECRET` | Yes | Secret used to sign NextAuth JWT sessions |
-| `NEXTAUTH_URL` | Yes | Local URL in development and deployed URL in production |
-| `CRON_SECRET` | Recommended | Secret used to protect the ingestion cron endpoint |
+| `DATABASE_URL` | Yes | Supabase pooled runtime connection, usually port `6543` |
+| `DIRECT_URL` | Yes | Supabase direct/session migration connection, usually port `5432` |
+| `APP_URL` | Yes | Public app URL used for billing links and scheduler callbacks |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase browser auth key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side key for auth-user creation and legacy-account migration |
+| `CRON_SECRET` | Yes | Protects cron entrypoints |
 
-## Vercel + Supabase Deployment
+## Optional Environment Variables
 
-GeoPulse is set up to deploy cleanly on Vercel with Supabase as the database.
+| Variable | Purpose |
+|---|---|
+| `ADMIN_EMAILS` | Comma-separated admin allowlist for manual sync and admin digest actions |
+| `NEWS_RSS_FEEDS` | Override feed list without editing `config/feeds.json` |
+| `GDELT_QUERY` | Custom GDELT query string |
+| `TWELVEDATA_API_KEY` | Preferred provider-backed quote source |
+| `STRIPE_SECRET_KEY` | Enables Stripe billing routes |
+| `STRIPE_PRICE_ID_MONTHLY` | Monthly premium plan price |
+| `STRIPE_PRICE_ID_YEARLY` | Yearly premium plan price |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook verification |
 
-### Recommended production setup
+## Product Access Model
 
-1. Set `DATABASE_URL` to the Supabase transaction pooler URL on port `6543`.
-2. Set `DIRECT_URL` to the Supabase direct/session URL on port `5432`.
-3. Set `NEXTAUTH_URL` to your deployed domain.
-4. Set `NEXTAUTH_SECRET` and `CRON_SECRET` in Vercel.
-5. Run `npx prisma migrate deploy` against the production database before the first live rollout.
+- Anonymous users get a live preview on the homepage with top stories, hotspots, and delayed market snapshots
+- Free accounts get the full core workflow: dashboard, digest, timeline, map, event drill-downs, 1 watchlist, 3 alerts, 3 saved views, and 5 digest stories
+- Premium is positioned at `$8/month` or `$79/year` for unlimited alerts, unlimited watchlists and saved views, faster refresh, and deeper briefing workflows
+- The first `1,000` registered users are still treated as the founding beta cohort, but beta status no longer silently grants unlimited premium access to everyone
 
-### Cron note
+## Deployment Notes
 
-The repository uses a once-per-day Vercel cron schedule by default so Hobby deployments succeed. If you are on a paid Vercel plan and want a more frequent schedule, update `vercel.json` accordingly.
+- Vercel Hobby-compatible cron is configured for once-daily ingestion in `vercel.json`
+- Hourly timezone-aware digest processing is implemented in `/api/cron/digests`, but it is not enabled by default in `vercel.json` so Hobby deploys continue to work
+- Run `npx prisma migrate deploy` before the first production rollout
+- In production, set `ADMIN_EMAILS`. If you leave it unset, admin-only routes are intentionally denied
+
+## Core API Surface
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/events` | Server-side filtered event feed with cursor pagination |
+| `GET` | `/api/events/[id]` | Event detail with trust metadata and related coverage |
+| `GET` | `/api/markets/quotes` | Market quotes through provider abstraction and snapshot fallback |
+| `GET` | `/api/me/entitlements` | Current plan state, features, and limits |
+| `GET/POST/DELETE` | `/api/saved-filters` | Durable saved dashboard views |
+| `POST` | `/api/digests/send` | Generate a preview or simulated personalized digest |
+| `POST` | `/api/billing/checkout` | Create Stripe subscription checkout session |
+| `POST` | `/api/billing/portal` | Open Stripe billing portal |
+| `POST` | `/api/sync` | Admin-triggered ingestion |
+| `POST` | `/api/cron/ingest` | Scheduled ingestion entrypoint |
+| `POST` | `/api/cron/digests` | Scheduled morning-brief processing entrypoint |
 
 ## Project Structure
 
 ```text
 prisma/
-  schema.prisma              Prisma schema
+  migrations/                Prisma migrations
+  schema.prisma              Source of truth for data models
 docs/
-  api-reference.md           API docs
-  architecture.md            System design and flow
-  correlation-engine.md      Asset matching logic
-  data-pipeline.md           Ingestion and processing
+  api-reference.md           Route contracts
+  architecture.md            Runtime structure and responsibilities
+  correlation-engine.md      Asset-matching logic
+  data-pipeline.md           Ingestion stages and reliability notes
   database-schema.md         Data model reference
-  frontend-guide.md          Page and component guide
-  market-data.md             Quote and chart integration
-  pattern-learning.md        Historical pattern aggregation
-  sentiment-analysis.md      VADER and scoring details
-  setup-guide.md             Local and deployment setup
+  market-data.md             Quote-provider strategy
+  setup-guide.md             Local and Vercel deployment guide
   images/                    README screenshots
 src/
-  components/                Layout, dashboard, and shared UI
-  lib/                       Hooks, ingest, auth, sources, scoring, correlation
-  pages/                     Routes and API endpoints
+  components/                UI components
+  lib/                       Auth, ingest, filtering, digest, billing, market data
+  pages/                     Next.js pages and API routes
 ```
 
-## API Surface
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/api/events` | List events with correlations |
-| GET | `/api/events/[id]` | Get one event with details |
-| GET | `/api/markets/quotes` | Fetch live quote data |
-| GET | `/api/stocks/[symbol]` | Get asset-specific news and patterns |
-| GET | `/api/patterns` | Read learned market patterns |
-| GET | `/api/status` | Pipeline health and aggregate stats |
-| POST | `/api/sync` | Trigger a manual ingestion run |
-| POST | `/api/cron/ingest` | Trigger scheduled ingestion |
-
-For request and response examples, see [docs/api-reference.md](docs/api-reference.md).
-
-## Documentation Map
+## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Setup Guide](docs/setup-guide.md)
-- [Frontend Guide](docs/frontend-guide.md)
+- [API Reference](docs/api-reference.md)
+- [Database Schema](docs/database-schema.md)
+- [Go-To-Market](docs/go-to-market.md)
 - [Data Pipeline](docs/data-pipeline.md)
 - [Correlation Engine](docs/correlation-engine.md)
-- [Pattern Learning](docs/pattern-learning.md)
-- [Sentiment Analysis](docs/sentiment-analysis.md)
-- [Database Schema](docs/database-schema.md)
 - [Market Data](docs/market-data.md)
-- [API Reference](docs/api-reference.md)
-
-## Product Direction
-
-- [ ] Email or push digest delivery
-- [ ] Historical event-pattern timelines
-- [ ] Premium AI-assisted event analysis
-- [ ] Mobile-first polish and PWA support
-- [ ] Expanded alerting and notification workflows
+- [Pattern Learning](docs/pattern-learning.md)
+- [Frontend Guide](docs/frontend-guide.md)
 
 ## License
 

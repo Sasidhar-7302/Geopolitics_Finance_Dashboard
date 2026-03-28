@@ -1,327 +1,233 @@
-# GeoPulse Intelligence — Database Schema
+# GeoPulse Database Schema
 
 ## Overview
 
-GeoPulse uses **Prisma ORM** with **SQLite** as the database engine. The schema defines 9 models covering users, events, correlations, patterns, watchlists, alerts, and system logging.
+GeoPulse uses Prisma with Supabase PostgreSQL. The schema now covers three layers:
 
-**Schema file:** `prisma/schema.prisma`
-**Database file:** `prisma/dev.db`
+- core intelligence data
+- user/product state
+- operational reliability and billing foundations
 
----
+Schema source: `prisma/schema.prisma`
 
-## Entity Relationship Diagram
+## Core Intelligence Models
 
-```
-┌──────────────┐       ┌──────────────────┐
-│    User      │──1:1──│  UserPreference   │
-│              │       │                  │
-│  id          │       │  categories (JSON)│
-│  name        │       │  regions (JSON)   │
-│  email       │       │  symbols (JSON)   │
-│  passwordHash│       │  onboarded        │
-└──────┬───────┘       └──────────────────┘
-       │
-       │ 1:N
-       ├──────────────────┐
-       │                  │
-┌──────┴───────┐   ┌─────┴──────┐
-│  Watchlist   │   │   Alert    │
-│              │   │            │
-│  name        │   │  name      │
-│              │   │  condition │
-└──────┬───────┘   │  status    │
-       │           └────────────┘
-       │ 1:N
-┌──────┴───────┐
-│WatchlistItem │
-│              │
-│  symbol      │
-│  name        │
-│  assetClass  │
-│  countryCode │
-└──────────────┘
+### `Event`
 
+Stores every ingested geopolitical story plus product-facing enrichment fields.
 
-┌──────────────┐       ┌──────────────────┐
-│    Event     │──1:N──│  Correlation      │
-│              │       │                  │
-│  title       │       │  symbol           │
-│  summary     │       │  impactScore      │
-│  source      │       │  impactDirection  │
-│  region      │       │  impactMagnitude  │
-│  countryCode │       │  window           │
-│  severity    │       │  timestamp        │
-│  sentimentS. │       └──────────────────┘
-│  sentimentL. │
-│  url (unique)│
-│  publishedAt │
-└──────────────┘
+Key fields:
 
+- headline and source data: `title`, `summary`, `source`, `url`, `canonicalUrl`
+- geography and impact context: `region`, `countryCode`, `severity`
+- content intelligence: `category`, `tags`, `whyThisMatters`, `relevanceScore`
+- clustering/trust: `duplicateClusterId`, `supportingSourcesCount`, `sourceReliability`
+- lifecycle: `publishedAt`, `firstSeenAt`, `fetchedAt`, `createdAt`
+- sentiment: `sentimentScore`, `sentimentLabel`
+- product gating: `isPremiumInsight`
 
-┌──────────────────┐   ┌──────────────────┐
-│    Pattern       │   │ MarketSnapshot   │
-│                  │   │                  │
-│  eventCategory   │   │  symbol          │
-│  symbol          │   │  price           │
-│  avgImpactPct    │   │  changePct       │
-│  direction       │   │  assetClass      │
-│  confidence      │   │  timestamp       │
-│  occurrences     │   └──────────────────┘
-└──────────────────┘
+Indexes added for:
 
-┌──────────────────┐
-│  IngestionLog    │
-│                  │
-│  source          │
-│  eventsFound     │
-│  status          │
-│  error           │
-│  startedAt       │
-│  finishedAt      │
-└──────────────────┘
-```
+- `publishedAt`
+- `region`
+- `severity`
+- `source`
+- `category`
+- `duplicateClusterId`
+- `urlHash`
 
----
+### `Correlation`
 
-## Model Details
+Links an event to a symbol with impact metadata.
 
-### User
+Key fields:
 
-Stores authenticated user accounts.
+- `eventId`
+- `symbol`
+- `impactScore`
+- `impactDirection`
+- `impactMagnitude`
+- `window`
+- `category`
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| name | String | | Display name |
-| email | String | @unique | Login email |
-| passwordHash | String | | bcrypt hash |
-| createdAt | DateTime | @default(now()) | Account creation |
-| updatedAt | DateTime | @updatedAt | Last modification |
+### `Pattern`
 
-**Relations:**
-- `watchlists` → Watchlist[] (1:N)
-- `alerts` → Alert[] (1:N)
-- `preference` → UserPreference? (1:1)
+Aggregated historical pattern for `eventCategory + symbol`.
 
----
+Key fields:
 
-### UserPreference
+- `eventCategory`
+- `symbol`
+- `avgImpactPct`
+- `direction`
+- `confidence`
+- `occurrences`
 
-Stores user's interest selections (topics, regions, stocks). Created during onboarding.
+### `MarketSnapshot`
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| userId | String | @unique | Foreign key to User |
-| categories | String | @default("[]") | JSON-encoded array of category strings |
-| regions | String | @default("[]") | JSON-encoded array of region strings |
-| symbols | String | @default("[]") | JSON-encoded array of stock symbols |
-| onboarded | Boolean | @default(false) | Whether user completed onboarding |
-| createdAt | DateTime | @default(now()) | Creation timestamp |
-| updatedAt | DateTime | @updatedAt | Last modification |
+Persistent quote fallback store.
 
-**JSON-in-String Pattern:** SQLite doesn't support array columns. Categories, regions, and symbols are stored as JSON strings:
-```
-categories = '["energy","conflict","technology"]'
-regions    = '["Middle East","Asia-Pacific"]'
-symbols    = '["SPY","NVDA","GLD"]'
-```
+Key fields:
 
-Client-side, parse with `JSON.parse()`:
-```typescript
-const cats = JSON.parse(preference.categories) as string[];
-```
+- `symbol`
+- `price`
+- `changePct`
+- `assetClass`
+- `provider`
+- `freshness`
+- `timestamp`
 
----
+## User and Product Models
 
-### Event
+### `User`
 
-Core model storing every ingested geopolitical event.
+Primary account model. Related to preferences, watchlists, alerts, subscriptions, entitlements, saved filters, and deliveries.
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| title | String | | Headline text |
-| summary | String? | | Description / content snippet |
-| source | String | | Feed name (e.g., "BBC World") |
-| region | String | | Geographic region |
-| countryCode | String? | | ISO country code (e.g., "US", "SA") |
-| severity | Int | @default(5) | Impact severity 1-10 |
-| sentimentScore | Float? | | VADER compound score (-1.0 to +1.0) |
-| sentimentLabel | String? | | "positive", "negative", or "neutral" |
-| url | String | @unique | Source URL (used for deduplication) |
-| publishedAt | DateTime | | Original publication time |
-| createdAt | DateTime | @default(now()) | When ingested |
+### `UserPreference`
 
-**Relations:**
-- `correlations` → Correlation[] (1:N)
+Stores interest selections and personalization settings.
 
-**Indexes:**
-- `url` — Unique index for deduplication
-- `publishedAt` — For chronological queries
-- `severity` — For filtering high-severity events
+Key fields:
 
----
+- `categories`, `regions`, `symbols`
+- `timezone`
+- `digestHour`
+- `emailDigestEnabled`
+- `deliveryChannels`
+- `savedViewsEnabled`
+- `plan`
+- `onboarded`
 
-### Correlation
+### `SavedFilter`
 
-Links an event to a financial symbol with impact data.
+Reusable saved dashboard views.
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| eventId | String | | Foreign key to Event |
-| symbol | String | | Stock/ETF symbol (e.g., "USO") |
-| impactScore | Float | | Match strength (0-1) |
-| impactDirection | String | | "up", "down", or "neutral" |
-| impactMagnitude | Float? | | Actual % price change |
-| window | String | @default("24h") | Time window for measurement |
-| timestamp | DateTime | @default(now()) | When correlation was created |
+Key fields:
 
-**Relations:**
-- `event` → Event (N:1)
+- `name`
+- `query`
+- `regions`
+- `categories`
+- `symbols`
+- `direction`
+- `severityMin`
+- `timeWindow`
+- `sortKey`
+- `isPinned`
 
----
+### `DigestSubscription`
 
-### Pattern
+Controls morning-brief delivery behavior.
 
-Aggregated historical pattern showing how an event category typically affects a symbol.
+Key fields:
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| eventCategory | String | | Event category (e.g., "Energy") |
-| symbol | String | | Financial symbol (e.g., "USO") |
-| avgImpactPct | Float | | Average historical impact % |
-| direction | String | | Majority direction ("up" or "down") |
-| confidence | Float | | Confidence score (0.0 to 1.0) |
-| occurrences | Int | | Number of supporting correlations |
-| createdAt | DateTime | @default(now()) | First created |
-| updatedAt | DateTime | @updatedAt | Last recalculated |
+- `enabled`
+- `digestHour`
+- `timezone`
+- `deliveryChannels`
+- `topStories`
+- `lastSentAt`
 
-**Unique constraint:** `@@unique([eventCategory, symbol])` — one pattern per category-symbol pair.
+### `Subscription`
 
----
+Billing system record for the user.
 
-### MarketSnapshot
+Key fields:
 
-Point-in-time market data for a symbol.
+- `provider`
+- `customerId`
+- `providerSubscriptionId`
+- `status`
+- `plan`
+- `billingInterval`
+- `currentPeriodEnd`
+- `cancelAtPeriodEnd`
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| symbol | String | | Stock/ETF symbol |
-| price | Float | | Price at snapshot time |
-| changePct | Float | | % change from previous close |
-| assetClass | String? | | "ETF", "Stock", "Bond", etc. |
-| timestamp | DateTime | @default(now()) | Snapshot time |
+### `Entitlement`
 
----
+Feature flag / access model per user.
 
-### Watchlist
+Example keys:
 
-User-created watchlist for tracking specific assets.
+- `premium_insights`
+- `saved_views`
+- `unlimited_alerts`
+- `unlimited_watchlists`
+- `faster_market_refresh`
+- `email_digest`
+- `intraday_digest`
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| userId | String | | Foreign key to User |
-| name | String | | Watchlist name |
-| createdAt | DateTime | @default(now()) | Creation time |
+### `EmailDelivery`
 
-**Relations:**
-- `user` → User (N:1)
-- `items` → WatchlistItem[] (1:N)
+Audit trail for digest or other outbound message attempts.
 
----
+Key fields:
 
-### WatchlistItem
+- `type`
+- `status`
+- `provider`
+- `messageId`
+- `dedupeKey`
+- `payload`
+- `sentAt`
 
-Individual item in a watchlist.
+## Operational Models
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| watchlistId | String | | Foreign key to Watchlist |
-| symbol | String | | Stock/ETF symbol |
-| name | String? | | Display name |
-| assetClass | String? | | "ETF", "Stock", etc. |
-| countryCode | String? | | ISO country code |
-| addedAt | DateTime | @default(now()) | When added |
+### `IngestionLog`
 
----
+High-level record of each ingestion run.
 
-### Alert
+### `IngestionJob`
 
-User-defined alert rules.
+Stage-aware runtime record for ingestion work.
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| userId | String | | Foreign key to User |
-| name | String | | Alert name |
-| condition | String | | Rule condition string |
-| status | String | @default("armed") | "armed" or "disabled" |
-| createdAt | DateTime | @default(now()) | Creation time |
+Key fields:
 
----
+- `kind`
+- `stage`
+- `status`
+- `source`
+- `attempts`
+- `itemsProcessed`
+- `error`
+- `startedAt`
+- `completedAt`
 
-### IngestionLog
+### `SourceHealth`
 
-Tracks every data ingestion cycle for monitoring.
+Per-source reliability tracking.
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| id | String | @id @default(cuid()) | Primary key |
-| source | String | | "rss", "gdelt", or "all" |
-| eventsFound | Int | @default(0) | New events ingested |
-| status | String | @default("running") | "running", "success", "partial", "failed" |
-| error | String? | | Error message if failed |
-| startedAt | DateTime | @default(now()) | Cycle start |
-| finishedAt | DateTime? | | Cycle completion |
+Key fields:
 
----
+- `source`
+- `feedUrl`
+- `status`
+- `lastFetchedAt`
+- `lastSucceededAt`
+- `lastError`
+- `lastLatencyMs`
+- `failureCount`
+- `successCount`
 
-## Database Commands
+## Legacy/Core Supporting Models
+
+- `Watchlist`
+- `WatchlistItem`
+- `Alert`
+
+These remain active and are now constrained by plan/entitlement logic in the API layer.
+
+## Migration Workflow
+
+Use Prisma migrations against Supabase:
 
 ```bash
-# Generate Prisma client (after schema changes)
 npx prisma generate
-
-# Create/apply migrations
-npx prisma migrate dev --name <migration_name>
-
-# Reset database (destructive — deletes all data)
-npx prisma migrate reset
-
-# Open database GUI
-npx prisma studio
-
-# Push schema changes without migration (dev only)
-npx prisma db push
+npx prisma migrate deploy
 ```
 
----
+For local iteration when you need a new migration:
 
-## Migration to PostgreSQL
-
-When ready to scale beyond SQLite:
-
-1. Change datasource in `schema.prisma`:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-
-2. Convert `UserPreference` arrays from JSON strings to proper arrays:
-   ```prisma
-   categories String[]  // native PostgreSQL arrays
-   regions    String[]
-   symbols    String[]
-   ```
-
-3. Run `npx prisma migrate dev` to generate PostgreSQL migration
-
-4. Update client code to remove `JSON.parse()` calls for preference arrays
+```bash
+npx prisma migrate dev --name <change_name>
+```

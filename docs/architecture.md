@@ -1,278 +1,131 @@
-# GeoPulse Intelligence — System Architecture
+# GeoPulse Architecture
 
 ## Overview
 
-GeoPulse is a geopolitical-finance intelligence platform that connects world events to market movements. It ingests news from 50+ RSS feeds and GDELT, correlates events to 60+ financial instruments using 174 keyword mappings, runs sentiment analysis locally via VADER, learns patterns over time, and serves everything through a real-time dark-themed dashboard.
+GeoPulse is a Next.js + Supabase intelligence product for finance-focused users. It ingests geopolitical coverage, enriches and clusters it, maps stories to affected assets, and serves the result through a dashboard, morning brief, watchlists, alerts, and API routes.
 
-**Tech Stack:** Next.js 16.1.6 (Pages Router) · React 18 · TypeScript · Prisma ORM · SQLite · NextAuth v4 (JWT) · SWR · Tailwind CSS · TradingView Widgets
+Current production stack:
 
----
+- Next.js 16 Pages Router
+- React 18 + TypeScript
+- Prisma ORM
+- Supabase PostgreSQL
+- Supabase Auth with Prisma-backed product profiles
+- SWR on the client
+- Vercel for deployment and scheduled cron triggering
 
-## High-Level Architecture
+## System Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        BROWSER (Client)                         │
-│                                                                 │
-│  ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌────────┐ ┌─────────┐ │
-│  │Dashboard │ │ Global   │ │Timeline │ │ Event  │ │ Stock   │ │
-│  │  Page    │ │   Map    │ │  Page   │ │ Detail │ │ Detail  │ │
-│  └────┬─────┘ └────┬─────┘ └────┬────┘ └───┬────┘ └────┬────┘ │
-│       │             │            │           │           │       │
-│  ┌────┴─────────────┴────────────┴───────────┴───────────┴────┐ │
-│  │              SWR Data Fetching Layer                        │ │
-│  │  useEvents · useQuotes · usePatterns · usePreferences      │ │
-│  └────────────────────────────┬────────────────────────────────┘ │
-└───────────────────────────────┼──────────────────────────────────┘
-                                │ HTTP (JSON)
-┌───────────────────────────────┼──────────────────────────────────┐
-│                     NEXT.JS SERVER                               │
-│                                                                  │
-│  ┌────────────────────────────┴────────────────────────────────┐ │
-│  │                    API Routes Layer                          │ │
-│  │  /api/events · /api/markets/quotes · /api/patterns          │ │
-│  │  /api/patterns/predict · /api/preferences · /api/status     │ │
-│  │  /api/stocks/[symbol] · /api/cron/ingest · /api/sync        │ │
-│  │  /api/watchlists · /api/alerts · /api/auth/[...nextauth]    │ │
-│  └──────────┬───────────────────────────────┬──────────────────┘ │
-│             │                               │                    │
-│  ┌──────────┴──────────┐     ┌──────────────┴────────────────┐  │
-│  │   Service Layer     │     │     Ingestion Pipeline        │  │
-│  │                     │     │                               │  │
-│  │  · Prisma Client    │     │  RSS Parser ─┐               │  │
-│  │  · Google Finance   │     │  GDELT API ──┼→ Deduplicate  │  │
-│  │    Quote Scraper    │     │              │    & Upsert    │  │
-│  │  · Auth (bcrypt)    │     │              ▼               │  │
-│  │  · Format Utils     │     │  Correlate → Patterns →      │  │
-│  │                     │     │  Sentiment → Store            │  │
-│  └──────────┬──────────┘     └──────────────┬────────────────┘  │
-│             │                               │                    │
-│  ┌──────────┴───────────────────────────────┴──────────────────┐ │
-│  │                   Prisma ORM                                │ │
-│  └──────────────────────────┬──────────────────────────────────┘ │
-└─────────────────────────────┼────────────────────────────────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    │   SQLite Database  │
-                    │   (dev.db)         │
-                    │                    │
-                    │  9 Models:         │
-                    │  User              │
-                    │  UserPreference    │
-                    │  Event             │
-                    │  Correlation       │
-                    │  Pattern           │
-                    │  MarketSnapshot    │
-                    │  Watchlist         │
-                    │  WatchlistItem     │
-                    │  IngestionLog      │
-                    │  Alert             │
-                    └────────────────────┘
+```mermaid
+graph LR
+    RSS[RSS Feeds] --> FETCH[Fetch + Normalize]
+    GDELT[GDELT] --> FETCH
+    FETCH --> ENRICH[Category, Tags, Why It Matters, Cluster IDs]
+    ENRICH --> DB[(Supabase Postgres)]
+    DB --> CORR[Correlation Engine]
+    CORR --> DB
+    DB --> PAT[Pattern Aggregation]
+    PAT --> DB
+    DB --> DIGEST[Morning Brief Builder]
+    DB --> API[Next.js API Routes]
+    API --> UI[Dashboard, Digest, Alerts, Settings]
 ```
 
----
+## Major Subsystems
 
-## Data Flow
+### Application Layer
 
-```
-                    ┌──────────────┐     ┌──────────────┐
-                    │  50+ RSS     │     │  GDELT API   │
-                    │  Feeds       │     │  (geopolitical│
-                    │  (20 countries)    │   events)    │
-                    └──────┬───────┘     └──────┬───────┘
-                           │                     │
-                           ▼                     ▼
-                    ┌────────────────────────────────────┐
-                    │    1. INGEST & DEDUPLICATE          │
-                    │    src/lib/ingest/events.ts         │
-                    │    · Parallel fetch from all sources│
-                    │    · Deduplicate by URL             │
-                    │    · Upsert to Event table          │
-                    └──────────────┬─────────────────────┘
-                                   │
-                                   ▼
-                    ┌────────────────────────────────────┐
-                    │    2. CORRELATE                     │
-                    │    src/lib/correlation/matchEvents  │
-                    │    · 174 keyword→symbol mappings    │
-                    │    · Word-boundary regex matching   │
-                    │    · False positive guards          │
-                    │    · Impact scoring (direction +    │
-                    │      magnitude from live quotes)    │
-                    └──────────────┬─────────────────────┘
-                                   │
-                                   ▼
-                    ┌────────────────────────────────────┐
-                    │    3. LEARN PATTERNS                │
-                    │    src/lib/correlation/patterns.ts  │
-                    │    · Aggregate by (category,symbol) │
-                    │    · Calculate avg impact, direction│
-                    │    · Confidence scoring             │
-                    └──────────────┬─────────────────────┘
-                                   │
-                                   ▼
-                    ┌────────────────────────────────────┐
-                    │    4. SENTIMENT ANALYSIS            │
-                    │    src/lib/analysis/sentiment.ts    │
-                    │    · VADER (local, free, no API)    │
-                    │    · Score: -1.0 to +1.0            │
-                    │    · Label: positive/negative/neutral│
-                    └──────────────┬─────────────────────┘
-                                   │
-                                   ▼
-                    ┌────────────────────────────────────┐
-                    │    5. SERVE                         │
-                    │    API Routes → SWR Hooks → Pages   │
-                    │    · Auto-refresh (2min events,     │
-                    │      5min patterns)                 │
-                    │    · TradingView live charts        │
-                    │    · Google Finance live quotes     │
-                    └────────────────────────────────────┘
-```
+- Pages Router app with authenticated product pages plus a public acquisition/preview surface on the homepage.
+- Dashboard now uses server-side event filtering instead of loading a fixed client-side event window and filtering everything locally.
+- Settings owns user preferences, digest schedule, delivery settings, and billing/access state.
+- Digest is positioned as the daily habit loop rather than a side page.
+- The public preview is intentionally snapshot-backed and lightweight so anonymous traffic does not depend on the full personalized data path.
 
----
+### Data Pipeline
 
-## Key Design Decisions
+- Sources: configured RSS feeds plus GDELT.
+- Ingestion stages: fetch, normalize, persist, correlate, pattern aggregation, sentiment, digest prep.
+- Each ingestion run records both a high-level `IngestionLog` and a staged `IngestionJob`.
+- Source fetches now populate `SourceHealth` records so failures and degraded feeds are visible.
+- Events are enriched with:
+  - `category`
+  - `tags`
+  - `whyThisMatters`
+  - `duplicateClusterId`
+  - `supportingSourcesCount`
+  - `sourceReliability`
+  - `relevanceScore`
+  - `isPremiumInsight`
 
-### Why Pages Router (not App Router)?
-Next.js 16 supports both, but Pages Router was chosen for stability, simpler mental model, and compatibility with NextAuth v4's `getServerSideProps` pattern.
+### Market Data
 
-### Why SQLite (not Postgres)?
-Zero-cost development and deployment. Single-file database, no server to manage. Easy to migrate to Postgres/Supabase later when scaling. SQLite handles the current data volume (1000s of events) without issues.
+- Market quotes now flow through a provider abstraction in `src/lib/market.ts`.
+- Preferred path: licensed/provider-backed API when configured via environment variables.
+- Current fallback path: delayed HTML scraper exposed in metadata as `google-finance-fallback`.
+- Persistent fallback: latest `MarketSnapshot` rows from Postgres.
+- Client surfaces now expose freshness explicitly as `live`, `delayed`, or `snapshot`.
 
-### Why SWR (not React Query)?
-Lighter weight, built by Vercel (same team as Next.js), perfect for the polling/refresh pattern used throughout (events refresh every 2 min, quotes on demand).
+### User State and Monetization Foundations
 
-### Why VADER (not FinBERT/GPT)?
-$0 cost, runs locally in Node.js, no API key needed, fast execution. Good enough for headline sentiment classification. Can upgrade to FinBERT or a cloud LLM later for deeper analysis.
+- `UserPreference` stores interests plus timezone and digest settings.
+- `SavedFilter` persists reusable dashboard views.
+- `DigestSubscription` stores morning-brief delivery settings.
+- `Subscription` and `Entitlement` provide billing and feature-gating scaffolding.
+- Product access is now structured as anonymous preview -> free account -> premium subscription.
+- Scheduled digest processing is available through `/api/cron/digests` with per-user timezone matching and per-day deduplication.
+- Stripe routes are implemented behind env gating:
+  - checkout
+  - billing portal
+  - webhook processing
 
-### Why Google Finance Scraping (not Yahoo Finance API)?
-yahoo-finance2 npm package broke with API changes. Google Finance HTML scraping is free, reliable, and returns real-time prices. No API key required.
+## Reliability Notes
 
-### Why TradingView Widgets?
-Industry-standard financial charts, free for embedding, professional appearance, real-time data built-in. No additional data costs.
+The current architecture is suitable for early-stage growth, but it is intentionally still a staged hardening path rather than a finished scale architecture.
 
----
+What is already improved:
 
-## Directory Structure
+- additive schema for product features and ops metadata
+- staged ingestion job records
+- source health tracking
+- persistent market snapshot fallback
+- server-side event query contract
+- billing + entitlements scaffolding
+- a public preview path that shows real product value without requiring auth first
+- normalized `/api/status` output so stale job rows do not contradict newer completed ingestions
 
-```
-GPF_Dashboard/
-├── prisma/
-│   └── schema.prisma          # Database schema (9 models)
-├── config/
-│   └── feeds.json             # RSS feed configuration (50+ feeds)
-├── src/
-│   ├── pages/
-│   │   ├── _app.tsx           # App wrapper (SessionProvider, global styles)
-│   │   ├── index.tsx          # Landing/redirect page
-│   │   ├── dashboard.tsx      # Main dashboard with category filters
-│   │   ├── digest.tsx         # Daily intelligence digest
-│   │   ├── timeline.tsx       # Chronological event timeline
-│   │   ├── map.tsx            # Interactive world map (per-country)
-│   │   ├── assets.tsx         # Watchlist / tracked assets
-│   │   ├── alerts.tsx         # User alert management
-│   │   ├── settings.tsx       # User settings & interest management
-│   │   ├── onboarding.tsx     # Perplexity-style interest picker
-│   │   ├── auth.tsx           # Auth redirect
-│   │   ├── auth/
-│   │   │   ├── signin.tsx     # Login page
-│   │   │   └── signup.tsx     # Registration page
-│   │   ├── event/
-│   │   │   └── [id].tsx       # Event detail with TradingView charts
-│   │   ├── stock/
-│   │   │   └── [symbol].tsx   # Stock detail with related events
-│   │   └── api/               # 15 API routes (see api-reference.md)
-│   ├── components/
-│   │   ├── layout/
-│   │   │   ├── Layout.tsx     # Main authenticated layout wrapper
-│   │   │   ├── PublicLayout.tsx # Unauthenticated layout
-│   │   │   ├── Header.tsx     # Top header bar
-│   │   │   └── Sidebar.tsx    # Navigation sidebar with system status
-│   │   ├── dashboard/
-│   │   │   ├── EventMarketPanel.tsx  # Event list with stock correlations
-│   │   │   ├── PatternInsightsCard.tsx # Pattern display card
-│   │   │   └── TopMoversCard.tsx     # Top market movers widget
-│   │   └── ui/
-│   │       ├── SectionCard.tsx       # Reusable card container
-│   │       ├── SeverityBadge.tsx     # 1-10 severity indicator
-│   │       ├── MetricCard.tsx        # KPI metric display
-│   │       ├── NavLink.tsx           # Sidebar navigation link
-│   │       ├── StockTicker.tsx       # Stock price ticker
-│   │       ├── Sparkline.tsx         # Mini sparkline chart
-│   │       ├── InputField.tsx        # Form input component
-│   │       ├── WorldMapSvg.tsx       # SVG world map component
-│   │       └── TradingViewChart.tsx  # TradingView widget wrappers
-│   ├── lib/
-│   │   ├── prisma.ts                 # Prisma client singleton
-│   │   ├── auth.ts                   # NextAuth configuration
-│   │   ├── format.ts                 # formatPct, formatCurrency, relativeTime
-│   │   ├── requireAuth.ts           # getServerSideProps auth guard
-│   │   ├── watchlists.ts            # Watchlist helpers
-│   │   ├── hooks/                    # SWR data hooks
-│   │   │   ├── useEvents.ts         # Events with correlations
-│   │   │   ├── useQuotes.ts         # Live stock quotes
-│   │   │   ├── usePatterns.ts       # Learned patterns
-│   │   │   ├── usePreferences.ts    # User preferences
-│   │   │   ├── useStatus.ts         # System status
-│   │   │   ├── useAlerts.ts         # User alerts
-│   │   │   └── useWatchlists.ts     # Watchlist data
-│   │   ├── sources/
-│   │   │   ├── rss.ts               # RSS feed parser
-│   │   │   ├── gdelt.ts             # GDELT API client
-│   │   │   └── yahoo.ts             # Google Finance quote scraper
-│   │   ├── correlation/
-│   │   │   ├── matchEvents.ts       # 174-mapping correlation engine
-│   │   │   ├── patterns.ts          # Pattern aggregation
-│   │   │   └── predict.ts           # Prediction engine
-│   │   ├── ingest/
-│   │   │   ├── events.ts            # Main ingestion pipeline
-│   │   │   └── scheduler.ts         # Cron scheduling
-│   │   ├── scoring/
-│   │   │   └── severity.ts          # Multi-signal severity scoring
-│   │   └── analysis/
-│   │       └── sentiment.ts         # VADER sentiment analysis
-│   └── types/
-│       └── vader-sentiment.d.ts     # Type declarations for VADER
-├── package.json
-├── tsconfig.json
-├── tailwind.config.ts
-├── next.config.ts
-└── postcss.config.mjs
-```
+What still remains for a later scale pass:
 
----
+- true queue-backed workers rather than request-driven ingestion execution
+- dedicated email delivery provider integration
+- richer provider-backed market data
+- stronger observability and rate limiting
+- full-text search optimization in Postgres
 
-## Authentication Flow
+## Key API Contracts
 
-```
-User → /auth/signin → NextAuth Credentials Provider → bcrypt verify
-                                                          │
-                                                     JWT Token
-                                                          │
-                                    ┌─────────────────────┴──────────────┐
-                                    │  Every protected page:             │
-                                    │  getServerSideProps → requireAuth  │
-                                    │  → getServerSession → redirect     │
-                                    │    to /auth/signin if no session   │
-                                    └────────────────────────────────────┘
-```
+Important current routes:
 
-- **Strategy:** JWT (stateless, no session table needed)
-- **Password hashing:** bcrypt via bcryptjs
-- **Test credentials:** test@geopulse.dev / testpass123
+- `GET /api/events`
+  - supports `q`, `regions`, `categories`, `symbols`, `direction`, `severityMin`, `from`, `to`, `timeWindow`, `sort`, `cursor`, `limit`
+- `GET /api/events/[id]`
+  - returns trust metadata and related coverage
+- `GET /api/me/entitlements`
+  - returns plan state, feature flags, and limits
+- `POST /api/saved-filters`
+  - persists reusable dashboard views
+- `POST /api/digests/send`
+  - creates a digest preview/delivery record
+- `POST /api/cron/digests`
+  - processes morning briefs due in the current hour
+- `POST /api/billing/checkout`
+- `POST /api/billing/portal`
+- `POST /api/webhooks/stripe`
 
----
+## Deployment Assumptions
 
-## External Integrations
-
-| Integration | Purpose | Cost | File |
-|---|---|---|---|
-| RSS Feeds (50+) | News ingestion from 20 countries | Free | `src/lib/sources/rss.ts` |
-| GDELT API | Geopolitical event data | Free | `src/lib/sources/gdelt.ts` |
-| Google Finance | Live stock/ETF quotes (60+ symbols) | Free (scraping) | `src/lib/sources/yahoo.ts` |
-| TradingView | Interactive financial charts | Free (widgets) | `src/components/ui/TradingViewChart.tsx` |
-| VADER | Sentiment analysis | Free (local) | `src/lib/analysis/sentiment.ts` |
-| react-simple-maps | Interactive world map | Free (OSS) | `src/pages/map.tsx` |
-
-**Total external cost: $0/month**
+- Vercel handles web runtime and scheduled trigger entrypoints.
+- Supabase is the system of record.
+- `DATABASE_URL` should use the pooled connection string.
+- `DIRECT_URL` should use the direct/session connection string for migrations.
+- `ADMIN_EMAILS` should be set in production for admin-only routes such as `/api/sync`.
+- Billing and provider-backed market data remain disabled unless the relevant env vars are configured.

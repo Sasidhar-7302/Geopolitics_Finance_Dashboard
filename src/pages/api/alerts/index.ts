@@ -1,20 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
+import { getEntitlementSnapshot } from "../../../lib/entitlements";
 import { prisma } from "../../../lib/prisma";
+import { requireApiUser } from "../../../lib/serverAuth";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions);
-  if (!session?.user?.email) {
-    res.status(401).json({ error: "Unauthorized" });
+  const currentUser = await requireApiUser(req, res);
+  if (!currentUser) {
     return;
   }
-
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
+  const { user } = currentUser;
 
   if (req.method === "GET") {
     const alerts = await prisma.alert.findMany({ where: { userId: user.id } });
@@ -23,6 +17,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "POST") {
+    const entitlements = await getEntitlementSnapshot(user.id);
+    const currentAlerts = await prisma.alert.count({ where: { userId: user.id } });
+    if (entitlements.limits.alerts !== null && currentAlerts >= entitlements.limits.alerts) {
+      res.status(403).json({
+        error: "Alert limit reached on the free tier.",
+        limit: entitlements.limits.alerts,
+      });
+      return;
+    }
+
     const { name, condition } = req.body as { name?: string; condition?: string };
     if (!name || !condition) {
       res.status(400).json({ error: "Missing fields" });

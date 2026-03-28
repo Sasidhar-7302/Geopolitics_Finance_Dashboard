@@ -15,7 +15,19 @@ export type IngestionStatus = {
     recentEvents24h: number;
     totalCorrelations: number;
     totalPatterns: number;
+    degradedSources: number;
   };
+  lastJob?: {
+    id: string;
+    kind?: string;
+    stage?: string | null;
+    status: string;
+    itemsProcessed: number;
+    startedAt: string;
+    completedAt?: string | null;
+    error?: string | null;
+    derived?: boolean;
+  } | null;
 };
 
 export function useStatus() {

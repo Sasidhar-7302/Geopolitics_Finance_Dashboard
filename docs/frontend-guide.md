@@ -86,7 +86,7 @@ Alert rule management (create, enable/disable alerts).
 ## Component Hierarchy
 
 ```
-_app.tsx (SessionProvider, global styles)
+_app.tsx (global styles)
 │
 ├── PublicLayout (unauthenticated pages)
 │   ├── auth/signin.tsx
@@ -265,7 +265,7 @@ export const getServerSideProps = requireAuth(async (ctx) => {
 });
 ```
 
-Redirects to `/auth/signin` if no session.
+Redirects to `/auth/signin` if there is no valid Supabase session cookie.
 
 ### Client-Side Navigation
 All internal navigation uses Next.js `<Link>` for client-side transitions:

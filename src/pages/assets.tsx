@@ -4,7 +4,7 @@ import SectionCard from "../components/ui/SectionCard";
 import { useWatchlists } from "../lib/hooks/useWatchlists";
 import { useQuotes } from "../lib/hooks/useQuotes";
 import { formatCurrency, formatPct } from "../lib/format";
-import { requireAuth } from "../lib/requireAuth";
+import { requireAuth } from "../lib/serverAuth";
 
 const fallback = [
   { symbol: "SPY", name: "S&P 500 ETF", assetClass: "ETF" },

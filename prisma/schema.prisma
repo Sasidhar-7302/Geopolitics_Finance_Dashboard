@@ -14,12 +14,18 @@ model User {
   id           String          @id @default(cuid())
   name         String
   email        String          @unique
-  passwordHash String
+  supabaseAuthId String?       @unique
+  passwordHash String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   watchlists   Watchlist[]
   alerts       Alert[]
   preference   UserPreference?
+  savedFilters SavedFilter[]
+  digest       DigestSubscription?
+  subscription Subscription?
+  entitlements Entitlement[]
+  deliveries   EmailDelivery[]
 }
 
 model UserPreference {
@@ -30,6 +36,12 @@ model UserPreference {
   regions    String   @default("[]") // JSON array: ["Middle East","Europe"]
   symbols    String   @default("[]") // JSON array: ["SPY","NVDA","GLD"]
   onboarded  Boolean  @default(false)
+  timezone   String   @default("UTC")
+  digestHour Int      @default(7)
+  emailDigestEnabled Boolean @default(true)
+  deliveryChannels String @default("[\"email\"]")
+  savedViewsEnabled Boolean @default(true)
+  plan       String   @default("free")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -67,8 +79,29 @@ model Event {
   sentimentLabel String?
   publishedAt    DateTime
   url            String   @unique
+  canonicalUrl   String?
+  urlHash        String?
+  feedGuid       String?
+  firstSeenAt    DateTime @default(now())
+  fetchedAt      DateTime?
+  duplicateClusterId String?
+  category       String   @default("general")
+  tags           String   @default("[]")
+  relevanceScore Float    @default(0)
+  whyThisMatters String?
+  supportingSourcesCount Int @default(1)
+  sourceReliability Float @default(0.5)
+  isPremiumInsight Boolean @default(false)
   createdAt      DateTime @default(now())
   correlations   Correlation[]
+
+  @@index([publishedAt])
+  @@index([region])
+  @@index([severity])
+  @@index([source])
+  @@index([category])
+  @@index([duplicateClusterId])
+  @@index([urlHash])
 }
 
 model MarketSnapshot {
@@ -78,6 +111,10 @@ model MarketSnapshot {
   changePct  Float
   assetClass String
   timestamp  DateTime
+  provider   String   @default("snapshot")
+  freshness  String   @default("snapshot")
+
+  @@index([symbol, timestamp])
 }
 
 model Correlation {
@@ -89,7 +126,12 @@ model Correlation {
   impactDirection String   @default("neutral")
   impactMagnitude Float    @default(0)
   window          String
+  category        String?
   createdAt       DateTime @default(now())
+
+  @@index([eventId])
+  @@index([symbol])
+  @@index([impactDirection])
 }
 
 model Pattern {
@@ -125,4 +167,122 @@ model Alert {
   condition   String
   status      String
   createdAt   DateTime @default(now())
+}
+
+model SavedFilter {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  query       String?
+  regions     String   @default("[]")
+  categories  String   @default("[]")
+  symbols     String   @default("[]")
+  direction   String   @default("all")
+  severityMin Int      @default(0)
+  timeWindow  String   @default("all")
+  sortKey     String   @default("relevance")
+  isPinned    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model DigestSubscription {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  enabled          Boolean  @default(true)
+  digestHour       Int      @default(7)
+  timezone         String   @default("UTC")
+  deliveryChannels String   @default("[\"email\"]")
+  topStories       Int      @default(5)
+  lastSentAt       DateTime?
+  deliveries       EmailDelivery[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Subscription {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id])
+  provider               String   @default("stripe")
+  customerId             String?  @unique
+  providerSubscriptionId String?  @unique
+  status                 String   @default("beta")
+  plan                   String   @default("free")
+  billingInterval        String   @default("monthly")
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model Entitlement {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  key       String
+  enabled   Boolean  @default(true)
+  source    String   @default("beta")
+  metadata  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+}
+
+model EmailDelivery {
+  id                   String              @id @default(cuid())
+  userId               String
+  user                 User                @relation(fields: [userId], references: [id])
+  digestSubscriptionId String?
+  digestSubscription   DigestSubscription? @relation(fields: [digestSubscriptionId], references: [id])
+  type                 String
+  status               String
+  provider             String?
+  messageId            String?
+  dedupeKey            String?             @unique
+  payload              String?
+  sentAt               DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model IngestionJob {
+  id             String   @id @default(cuid())
+  kind           String
+  stage          String?
+  status         String
+  source         String?
+  attempts       Int      @default(0)
+  itemsProcessed Int      @default(0)
+  error          String?
+  startedAt      DateTime @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([kind, status, createdAt])
+}
+
+model SourceHealth {
+  id             String   @id @default(cuid())
+  source         String
+  feedUrl        String
+  status         String   @default("unknown")
+  lastFetchedAt  DateTime?
+  lastSucceededAt DateTime?
+  lastError      String?
+  lastLatencyMs  Int?
+  failureCount   Int      @default(0)
+  successCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([source, feedUrl])
 }

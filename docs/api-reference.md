@@ -1,476 +1,429 @@
-# GeoPulse Intelligence — API Reference
+# GeoPulse API Reference
 
 ## Overview
 
-GeoPulse exposes 15 API endpoints via Next.js API Routes. All endpoints return JSON. Authentication uses NextAuth JWT sessions where required.
+GeoPulse exposes JSON API routes through Next.js. Authentication is handled by Supabase Auth session cookies where required.
 
-**Base URL:** `http://localhost:3000/api`
+Base URL in local development:
 
----
+```text
+http://localhost:3000/api
+```
 
 ## Authentication
 
-### POST `/api/auth/[...nextauth]`
-NextAuth v4 catch-all route handling signin, signout, session, and CSRF.
+### `POST /api/auth/signup`
 
-**Providers:** Credentials (email + password with bcrypt verification)
-**Strategy:** JWT (stateless, no session table)
+Create a Supabase Auth user plus the matching local GeoPulse profile row.
 
-### POST `/api/auth/signup`
-Create a new user account.
+Body:
 
-**Body:**
 ```json
 {
-  "name": "John Doe",
-  "email": "john@example.com",
-  "password": "securepassword"
+  "name": "Jane Investor",
+  "email": "jane@example.com",
+  "password": "strong-password",
+  "timezone": "America/New_York",
+  "digestHour": 7
 }
 ```
 
-**Response (201):**
+Response:
+
 ```json
 {
-  "id": "clx...",
-  "name": "John Doe",
-  "email": "john@example.com"
+  "ok": true
 }
 ```
 
-**Errors:**
-- `400` — Missing fields or email already exists
-- `500` — Server error
+### `POST /api/auth/migrate-legacy`
 
----
+Bridge an old local-password account into Supabase Auth on first sign-in.
 
-## Events
+Body:
 
-### GET `/api/events`
-List events with optional filters. Includes correlations for each event.
+```json
+{
+  "email": "legacy@example.com",
+  "password": "existing-password"
+}
+```
 
-**Query Parameters:**
-| Param | Type | Description |
+Response:
+
+```json
+{
+  "ok": true
+}
+```
+
+## Events and Intelligence
+
+### `GET /api/events`
+
+Server-side filtered event feed with cursor pagination.
+
+Supported query params:
+
+| Param | Example | Notes |
 |---|---|---|
-| `severity` | number | Minimum severity threshold (1-10) |
-| `region` | string | Filter by region name |
-| `countryCode` | string | Filter by ISO country code |
-| `limit` | number | Max events returned (default: 100) |
-| `offset` | number | Pagination offset |
+| `q` | `oil` | Search across title, summary, source, region, tags, `whyThisMatters`, and symbols |
+| `regions` or `region` | `Middle East,Europe` | Comma-separated |
+| `categories` or `category` | `energy,conflict` | Comma-separated |
+| `symbols` | `XLE,GLD` | Comma-separated |
+| `direction` | `up` | `all`, `up`, `down`, `mixed`, `none` |
+| `severityMin` or `severity` | `6` | Minimum event severity |
+| `from` | `24h` | Relative (`6h`, `24h`, `7d`) or ISO date |
+| `to` | `2026-03-26T12:00:00Z` | Optional upper bound |
+| `timeWindow` | `36h` | Convenience alias for `from` |
+| `sort` | `relevance` | `relevance`, `newest`, `severity`, `support` |
+| `cursor` | `clx...` | Cursor from previous response |
+| `limit` | `20` | Max `50` |
 
-**Response (200):**
+Response shape:
+
 ```json
 {
   "events": [
     {
       "id": "clx...",
-      "title": "OPEC agrees to cut oil output",
-      "summary": "The organization agreed to reduce...",
-      "source": "Reuters",
-      "region": "Middle East",
-      "countryCode": "SA",
-      "severity": 8,
-      "sentimentScore": 0.44,
-      "sentimentLabel": "positive",
-      "url": "https://...",
-      "publishedAt": "2026-03-23T10:30:00Z",
-      "createdAt": "2026-03-23T10:35:00Z",
+      "title": "OPEC signals a production cut",
+      "category": "energy",
+      "whyThisMatters": "Energy supply risk tends to move oil-linked assets quickly.",
+      "supportingSourcesCount": 3,
       "correlations": [
         {
-          "id": "clx...",
           "symbol": "USO",
-          "impactScore": 0.85,
           "impactDirection": "up",
-          "impactMagnitude": 2.3
+          "impactScore": 0.84,
+          "category": "energy"
         }
       ]
     }
   ],
-  "total": 1338
+  "pagination": {
+    "limit": 20,
+    "nextCursor": "clx...",
+    "hasMore": true,
+    "total": 461
+  }
 }
 ```
 
-**Auth required:** No
+### `GET /api/events/[id]`
 
-### GET `/api/events/[id]`
-Get a single event by ID with full correlation details.
+Fetch a single event plus trust metadata and related duplicate coverage.
 
-**Response (200):**
+Response shape:
+
 ```json
 {
-  "id": "clx...",
-  "title": "...",
-  "summary": "...",
-  "source": "Reuters",
-  "region": "Middle East",
-  "countryCode": "SA",
-  "severity": 8,
-  "sentimentScore": 0.44,
-  "sentimentLabel": "positive",
-  "url": "https://...",
-  "publishedAt": "2026-03-23T10:30:00Z",
-  "correlations": [
+  "event": {
+    "id": "clx...",
+    "title": "Headline",
+    "supportingSourcesCount": 4,
+    "sourceReliability": 0.85
+  },
+  "relatedCoverage": [
     {
-      "symbol": "USO",
-      "impactScore": 0.85,
-      "impactDirection": "up",
-      "impactMagnitude": 2.3,
-      "window": "24h",
-      "timestamp": "2026-03-23T10:35:00Z"
+      "id": "clx...",
+      "title": "Similar coverage",
+      "source": "Reuters",
+      "url": "https://example.com/story"
     }
-  ]
+  ],
+  "trust": {
+    "supportingSourcesCount": 4,
+    "sourceReliability": 0.85
+  }
 }
 ```
 
-**Errors:**
-- `404` — Event not found
-- `400` — Invalid ID
+### `GET /api/patterns`
 
----
+Read learned patterns. Optional query params:
+
+- `category`
+- `symbol`
+
+### `GET /api/patterns/predict`
+
+Predict likely market reactions for a specific event.
+
+Required query param:
+
+- `eventId`
+
+### `GET /api/stocks/[symbol]`
+
+Fetch correlations and learned patterns for one symbol.
 
 ## Market Data
 
-### GET `/api/markets/quotes`
-Fetch live stock quotes from Google Finance.
+### `GET /api/markets/quotes`
 
-**Query Parameters:**
-| Param | Type | Description |
-|---|---|---|
-| `symbols` | string | Comma-separated symbols (e.g., "SPY,NVDA,GLD") |
+Fetch quotes through the market provider abstraction.
 
-**Response (200):**
+Required query param:
+
+- `symbols=SPY,NVDA,GLD`
+
+Response shape:
+
 ```json
 {
-  "quotes": {
-    "SPY": { "price": 512.34, "changePct": 0.45 },
-    "NVDA": { "price": 875.20, "changePct": -1.23 },
-    "GLD": { "price": 198.50, "changePct": 0.82 }
-  },
-  "cached": false
-}
-```
-
-**Caching:** 2-minute cache with stale-on-error fallback. If Google Finance is unreachable, returns last cached values.
-
-**Auth required:** No
-
-### GET `/api/stocks/[symbol]`
-Get detailed data for a single stock symbol including related events.
-
-**Response (200):**
-```json
-{
-  "symbol": "USO",
-  "quote": { "price": 78.50, "changePct": 2.3 },
-  "correlations": [
+  "quotes": [
     {
-      "event": {
-        "id": "clx...",
-        "title": "OPEC agrees to cut output",
-        "severity": 8,
-        "publishedAt": "2026-03-23T10:30:00Z"
-      },
-      "impactDirection": "up",
-      "impactMagnitude": 2.3
+      "symbol": "SPY",
+      "price": 512.34,
+      "changePct": 0.45,
+      "provider": "twelvedata",
+      "freshness": "delayed",
+      "timestamp": "2026-03-26T12:00:00.000Z"
     }
   ],
-  "patterns": [
-    {
-      "eventCategory": "Energy",
-      "avgImpactPct": 2.33,
-      "direction": "up",
-      "confidence": 0.94,
-      "occurrences": 47
-    }
-  ]
+  "meta": {
+    "provider": "twelvedata",
+    "freshness": "delayed",
+    "cached": false
+  }
 }
 ```
 
-**Auth required:** No
+If the provider is unavailable, the endpoint falls back to the latest stored `MarketSnapshot` records.
 
----
+## Preferences and Personalization
 
-## Patterns & Predictions
+### `GET /api/preferences`
 
-### GET `/api/patterns`
-List learned patterns, optionally filtered.
+Read the authenticated user's preferences and personalization settings.
 
-**Query Parameters:**
-| Param | Type | Description |
-|---|---|---|
-| `category` | string | Filter by event category |
-| `symbol` | string | Filter by symbol |
+Response includes:
 
-**Response (200):**
+- `categories`
+- `regions`
+- `symbols`
+- `timezone`
+- `digestHour`
+- `emailDigestEnabled`
+- `deliveryChannels`
+- `savedViewsEnabled`
+- `plan`
+- `onboarded`
+
+### `POST /api/preferences`
+
+Create or initialize the authenticated user's preferences.
+
+### `PUT /api/preferences`
+
+Update the authenticated user's preferences.
+
+Example body:
+
 ```json
 {
-  "patterns": [
-    {
-      "id": "clx...",
-      "eventCategory": "Energy",
-      "symbol": "USO",
-      "avgImpactPct": 2.33,
-      "direction": "up",
-      "confidence": 0.94,
-      "occurrences": 47,
-      "updatedAt": "2026-03-23T12:00:00Z"
-    }
-  ]
-}
-```
-
-Ordered by confidence (highest first).
-
-**Auth required:** No
-
-### GET `/api/patterns/predict`
-Get market predictions for a specific event based on historical patterns.
-
-**Query Parameters:**
-| Param | Type | Description |
-|---|---|---|
-| `eventId` | string | The event ID to generate predictions for |
-
-**Response (200):**
-```json
-{
-  "predictions": [
-    {
-      "symbol": "USO",
-      "direction": "up",
-      "avgImpactPct": 2.33,
-      "confidence": 0.94,
-      "occurrences": 47,
-      "eventCategory": "Energy"
-    }
-  ]
-}
-```
-
-**Auth required:** No
-
----
-
-## User Preferences
-
-### GET `/api/preferences`
-Get the authenticated user's preferences.
-
-**Response (200):**
-```json
-{
-  "id": "clx...",
-  "categories": "[\"energy\",\"conflict\",\"technology\"]",
-  "regions": "[\"Middle East\",\"Asia-Pacific\"]",
-  "symbols": "[\"SPY\",\"NVDA\",\"GLD\"]",
-  "onboarded": true
-}
-```
-
-Note: `categories`, `regions`, and `symbols` are JSON-encoded strings (SQLite doesn't support arrays). Parse with `JSON.parse()` on the client.
-
-**Auth required:** Yes
-
-### POST `/api/preferences`
-Create preferences for a new user (during onboarding).
-
-**Body:**
-```json
-{
-  "categories": ["energy", "conflict", "technology"],
+  "categories": ["energy", "technology"],
   "regions": ["Middle East", "Asia-Pacific"],
-  "symbols": ["SPY", "NVDA", "GLD"],
-  "onboarded": true
+  "symbols": ["XLE", "NVDA"],
+  "timezone": "America/New_York",
+  "digestHour": 7,
+  "emailDigestEnabled": true,
+  "deliveryChannels": ["email"],
+  "savedViewsEnabled": true,
+  "plan": "free"
 }
 ```
 
-**Response (201):** Created preference object
+### `GET /api/me/entitlements`
 
-**Auth required:** Yes
+Returns plan state, founding-beta cohort status, feature flags, and free-tier limits.
 
-### PUT `/api/preferences`
-Update existing preferences.
+Example response:
 
-**Body:** Same shape as POST
-
-**Response (200):** Updated preference object
-
-**Auth required:** Yes
-
----
-
-## Watchlists
-
-### GET `/api/watchlists`
-List the authenticated user's watchlists.
-
-**Response (200):**
 ```json
 {
-  "watchlists": [
-    {
-      "id": "clx...",
-      "name": "Energy Watchlist",
-      "items": [
-        {
-          "symbol": "USO",
-          "name": "United States Oil Fund",
-          "assetClass": "ETF"
-        }
-      ]
-    }
-  ]
+  "betaUnlocked": true,
+  "betaSpotsRemaining": 954,
+  "registeredUsers": 46,
+  "plan": "free",
+  "premiumActive": false,
+  "billingEnabled": false,
+  "limits": {
+    "alerts": 3,
+    "savedViews": 3,
+    "watchlists": 1,
+    "digestStories": 5
+  }
 }
 ```
 
-**Auth required:** Yes
+### `GET /api/saved-filters`
 
-### POST `/api/watchlists`
-Create a new watchlist.
+List the authenticated user's saved views.
 
-**Body:**
+### `POST /api/saved-filters`
+
+Create a saved view.
+
+Body:
+
 ```json
 {
-  "name": "My Watchlist"
+  "name": "Middle East risk",
+  "query": "oil",
+  "regions": ["Middle East"],
+  "categories": ["energy"],
+  "symbols": ["XLE", "USO"],
+  "direction": "up",
+  "severityMin": 6,
+  "timeWindow": "24h",
+  "sortKey": "relevance",
+  "isPinned": true
 }
 ```
 
-**Auth required:** Yes
+### `DELETE /api/saved-filters?id=<filterId>`
 
-### POST `/api/watchlists/items`
-Add an item to a watchlist.
+Delete one saved view.
 
-**Body:**
+### `POST /api/digests/send`
+
+Generate a personalized digest preview or simulated delivery record.
+
+Body:
+
 ```json
 {
-  "watchlistId": "clx...",
+  "previewOnly": true
+}
+```
+
+Admin users may additionally specify a `userId`.
+
+## Watchlists and Alerts
+
+### `GET /api/watchlists`
+
+List the user's watchlists and items.
+
+### `POST /api/watchlists`
+
+Create a watchlist, subject to entitlement limits.
+
+### `POST /api/watchlists/items`
+
+Add an item to the default watchlist.
+
+Body:
+
+```json
+{
   "symbol": "NVDA",
   "name": "NVIDIA",
   "assetClass": "Stock"
 }
 ```
 
-**Auth required:** Yes
+### `GET /api/alerts`
 
----
+List the user's alerts.
 
-## Alerts
+### `POST /api/alerts`
 
-### GET `/api/alerts`
-List the authenticated user's alerts.
+Create an alert, subject to entitlement limits.
 
-**Response (200):**
+Body:
+
 ```json
 {
-  "alerts": [
-    {
-      "id": "clx...",
-      "name": "High severity energy event",
-      "condition": "category:energy AND severity:>=8",
-      "status": "armed",
-      "createdAt": "2026-03-23T08:00:00Z"
-    }
-  ]
-}
-```
-
-**Auth required:** Yes
-
-### POST `/api/alerts`
-Create a new alert.
-
-**Body:**
-```json
-{
-  "name": "Oil crisis alert",
+  "name": "Oil risk alert",
   "condition": "category:energy AND severity:>=8"
 }
 ```
 
-**Auth required:** Yes
+## Billing
 
----
+Stripe routes return `503` until the relevant Stripe environment variables are configured.
 
-## System
+### `POST /api/billing/checkout`
 
-### GET `/api/status`
-Get system health and statistics.
+Create a Stripe checkout session.
 
-**Response (200):**
+Body:
+
 ```json
 {
-  "lastIngestion": {
-    "status": "success",
-    "eventsFound": 47,
-    "finishedAt": "2026-03-23T12:00:00Z"
-  },
-  "counts": {
-    "events": 1338,
-    "correlations": 4075,
-    "patterns": 183
-  },
-  "last24h": {
-    "events": 127
-  }
+  "interval": "monthly"
 }
 ```
 
-**Auth required:** No
+`interval` may be `monthly` or `yearly`.
 
-### POST `/api/sync`
-Manually trigger an ingestion cycle.
+### `POST /api/billing/portal`
 
-**Response (200):**
-```json
-{
-  "status": "started",
-  "message": "Ingestion cycle triggered"
-}
-```
+Create a Stripe customer portal session for the authenticated user.
 
-**Auth required:** Yes
+### `POST /api/webhooks/stripe`
 
-### POST `/api/cron/ingest`
-Automated ingestion trigger (for cron jobs / Vercel Cron).
+Stripe webhook endpoint. Requires a valid `Stripe-Signature` header and `STRIPE_WEBHOOK_SECRET`.
 
-**Headers:**
-```
+## Operations
+
+### `GET /api/status`
+
+Read system health and aggregate counts.
+
+Response includes:
+
+- `lastIngestion`
+- `lastJob`
+- `stats.totalEvents`
+- `stats.recentEvents24h`
+- `stats.totalCorrelations`
+- `stats.totalPatterns`
+- `stats.degradedSources`
+
+### `POST /api/sync`
+
+Trigger ingestion manually. Requires an authenticated admin user.
+
+### `POST /api/cron/ingest`
+
+Protected cron entrypoint for ingestion.
+
+Authorization:
+
+```text
 Authorization: Bearer <CRON_SECRET>
 ```
 
-**Response (200):**
+### `POST /api/cron/digests`
+
+Protected cron entrypoint for scheduled morning-brief processing.
+
+Authorization:
+
+```text
+Authorization: Bearer <CRON_SECRET>
+```
+
+## Error Shape
+
+Errors are returned as:
+
 ```json
 {
-  "count": 47,
-  "errors": []
+  "error": "Human-readable message"
 }
 ```
 
-**Auth required:** CRON_SECRET token
+Common status codes:
 
----
-
-## Error Responses
-
-All endpoints return errors in a consistent format:
-
-```json
-{
-  "error": "Human-readable error message"
-}
-```
-
-Common HTTP status codes:
-- `400` — Bad request (missing/invalid parameters)
-- `401` — Unauthorized (no session or invalid token)
-- `404` — Resource not found
-- `405` — Method not allowed
-- `500` — Internal server error
-
----
-
-## Rate Limits
-
-No rate limiting is implemented in the MVP. For production deployment, consider:
-- Quote endpoint: 30 req/min (Google Finance scraping)
-- Ingestion endpoint: 1 req/5min (prevent duplicate cycles)
-- General API: 100 req/min per IP
+- `400` bad request
+- `401` unauthorized
+- `403` forbidden
+- `404` not found
+- `405` method not allowed
+- `500` server error
+- `503` optional provider not configured

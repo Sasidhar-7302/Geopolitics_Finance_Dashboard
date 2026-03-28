@@ -1,14 +1,16 @@
-# GeoPulse Intelligence - Setup and Deployment Guide
+# GeoPulse Setup Guide
 
 ## Prerequisites
 
-- Node.js 20+ and npm
-- A Supabase Postgres database
+- Node.js 20+
+- npm
+- Supabase PostgreSQL
 - Git
 
-This repository is already configured for Prisma + Supabase PostgreSQL. It is not a SQLite app anymore.
+Optional but supported:
 
----
+- Stripe account and price IDs for billing
+- TwelveData API key for provider-backed quotes
 
 ## Quick Start
 
@@ -17,83 +19,62 @@ git clone <repo-url> GPF_Dashboard
 cd GPF_Dashboard
 npm install
 cp .env.example .env
-```
-
-Fill in `.env`, then apply the existing Prisma migrations:
-
-```bash
 npx prisma migrate deploy
 npm run dev
 ```
 
 The app runs at `http://localhost:3000`.
 
----
-
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Required:
 
 ```env
-# Supabase PostgreSQL
-# Runtime connection for serverless app traffic
 DATABASE_URL="postgresql://...pooler.supabase.com:6543/postgres?pgbouncer=true"
-
-# Direct/session connection for Prisma migrations
 DIRECT_URL="postgresql://...pooler.supabase.com:5432/postgres"
-
-# NextAuth
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="generate-a-random-secret"
-
-# Cron ingestion
+APP_URL="http://localhost:3000"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project-ref.supabase.co"
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
+SUPABASE_SERVICE_ROLE_KEY="eyJ..."
 CRON_SECRET="generate-a-random-secret"
+```
+
+Optional:
+
+```env
+ADMIN_EMAILS="founder@example.com,ops@example.com"
+NEWS_RSS_FEEDS="https://feeds.bbci.co.uk/news/world/rss.xml,https://www.aljazeera.com/xml/rss/all.xml"
+GDELT_QUERY="conflict OR sanctions OR election OR protest"
+TWELVEDATA_API_KEY="..."
+STRIPE_SECRET_KEY="..."
+STRIPE_PRICE_ID_MONTHLY="price_..."
+STRIPE_PRICE_ID_YEARLY="price_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
 ```
 
 Notes:
 
-- Use the Supabase transaction pooler on port `6543` for `DATABASE_URL`.
-- Use the Supabase session/direct connection on port `5432` for `DIRECT_URL`.
-- On Vercel, set `NEXTAUTH_URL` to your deployed domain.
+- `DATABASE_URL` should use the Supabase transaction pooler on port `6543`
+- `DIRECT_URL` should use the direct/session connection on port `5432`
+- `NEXT_PUBLIC_SUPABASE_URL` should match your Supabase project reference, e.g. `https://your-project-ref.supabase.co`
+- `SUPABASE_SERVICE_ROLE_KEY` is required because GeoPulse creates auth users server-side and migrates legacy local-password accounts into Supabase Auth on first sign-in
+- `ADMIN_EMAILS` should be set in production; admin-only routes are denied if it is missing
+- `TWELVEDATA_API_KEY` is optional, but it is the preferred quote provider if you want to reduce dependence on the fallback scraper
 
-Generate a secret with:
+## Database Workflow
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
+Checked-in Prisma migrations live under `prisma/migrations`.
 
----
-
-## Database Setup
-
-The repo already contains Prisma migrations in `prisma/migrations`.
-
-Use these commands:
+Common commands:
 
 ```bash
-# Apply checked-in migrations
-npx prisma migrate deploy
-
-# Regenerate the client after schema changes
 npx prisma generate
-```
-
-When you change `prisma/schema.prisma` during development:
-
-```bash
+npx prisma migrate deploy
 npx prisma migrate dev --name your_change_name
-```
-
-Useful commands:
-
-```bash
 npx prisma studio
-npm run seed
 ```
 
----
-
-## Development Workflow
+## Development Commands
 
 ```bash
 npm run dev
@@ -103,96 +84,96 @@ npm run build
 
 Notes:
 
-- `npm run lint` currently aliases to TypeScript type-checking.
-- `npm run build` runs `prisma generate` and then `next build`.
+- `npm run lint` currently aliases to `npm run typecheck`
+- `npm run build` runs `prisma generate` and then `next build`
 
----
+## Manual Admin Actions
 
-## Manual Ingestion
-
-Authenticated users can trigger ingestion through the UI or the protected API:
+Manual ingestion:
 
 ```bash
 curl -X POST http://localhost:3000/api/sync \
   --cookie "<authenticated-session-cookie>"
 ```
 
-For cron-style ingestion:
+Cron-style ingestion:
 
 ```bash
 curl -X POST http://localhost:3000/api/cron/ingest \
   -H "Authorization: Bearer <CRON_SECRET>"
 ```
 
-The Settings page now uses `/api/sync`, so you do not need to expose any public cron secret to the browser.
+Digest processing:
 
----
+```bash
+curl -X POST http://localhost:3000/api/cron/digests \
+  -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+`/api/sync` is intentionally admin-only. In local development it works without `ADMIN_EMAILS`; in production you must configure `ADMIN_EMAILS`.
 
 ## Deploying to Vercel
 
-### 1. Import the repository into Vercel
+### 1. Import the repository
 
-Vercel will detect this as a Next.js project automatically.
+Vercel detects this as a Next.js project automatically.
 
 ### 2. Add environment variables
 
-Add these in the Vercel project settings:
+Required in Vercel:
 
 - `DATABASE_URL`
 - `DIRECT_URL`
-- `NEXTAUTH_URL`
-- `NEXTAUTH_SECRET`
+- `APP_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `ADMIN_EMAILS`
 
-Recommended values:
+Optional in Vercel:
 
-- `DATABASE_URL`: Supabase transaction pooler, port `6543`
-- `DIRECT_URL`: Supabase session/direct connection, port `5432`
-- `NEXTAUTH_URL`: `https://your-project.vercel.app` or your custom domain
+- `TWELVEDATA_API_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_PRICE_ID_MONTHLY`
+- `STRIPE_PRICE_ID_YEARLY`
+- `STRIPE_WEBHOOK_SECRET`
+- `NEWS_RSS_FEEDS`
+- `GDELT_QUERY`
 
 ### 3. Run production migrations
 
-Before the first production deployment, apply the checked-in migrations to Supabase:
+Before the first production deployment:
 
 ```bash
 npx prisma migrate deploy
 ```
 
-Do this from your machine or CI against the production database. Do not rely on the Vercel runtime to create tables on first request.
+Do this from your machine or CI against the production database.
 
 ### 4. Deploy
 
-Once the env vars are present and migrations are applied, a normal Vercel deployment should build successfully.
+Once env vars are set and migrations are applied, Vercel builds normally.
 
----
+## Cron Behavior
 
-## Vercel Cron Behavior
-
-This repo includes `vercel.json` with a cron job targeting:
-
-```text
-/api/cron/ingest
-```
-
-The default schedule in this repo is:
+`vercel.json` ships with a Hobby-safe daily ingestion schedule:
 
 ```text
 0 6 * * *
 ```
 
-That once-daily schedule is chosen because Vercel Hobby cron jobs support only daily execution. If you are on a paid Vercel plan and want ingestion every 2 hours, change the schedule back to:
+That targets `/api/cron/ingest`.
 
-```text
-0 */2 * * *
-```
+Timezone-aware digest generation is implemented in `/api/cron/digests`, but not enabled in `vercel.json` by default. To make 7 AM local-time digests work in production, trigger that route hourly from:
 
-Vercel cron requests are authenticated with the `CRON_SECRET` bearer token.
+- Vercel cron on a paid plan
+- an external scheduler
+- a self-hosted scheduler
 
----
+## Self-Hosted Runtime
 
-## Self-Hosted Deployments
-
-For a long-running VPS or container deployment:
+For a long-running container or VM:
 
 ```bash
 npm install
@@ -201,28 +182,30 @@ npm run build
 npm start
 ```
 
-In self-hosted environments, the in-process scheduler can still run outside Vercel. On Vercel, the app uses `vercel.json` cron jobs instead.
-
----
+Outside Vercel, the in-process scheduler can still run, but explicit cron or queue-backed workers are a better long-term production model.
 
 ## Troubleshooting
 
 ### Vercel deployment fails before build starts
 
-Check `vercel.json`. Unsupported cron schedules on Hobby plans can block deployment. This repo now uses a Hobby-safe daily schedule by default.
+Check `vercel.json`. Hobby plans reject unsupported cron schedules.
 
-### Build succeeds locally but auth fails on Vercel
+### Auth works locally but fails on Vercel
 
-Check `NEXTAUTH_URL` and `NEXTAUTH_SECRET`. `NEXTAUTH_URL` must match the deployed domain you are actually using.
+Check `APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. `APP_URL` must match the deployed domain.
 
-### App deploys but database calls fail
+### Database calls fail in production
 
-Check that:
+Check:
 
-- `DATABASE_URL` points to the Supabase transaction pooler on port `6543`
-- `DIRECT_URL` points to the Supabase direct/session connection on port `5432`
-- `npx prisma migrate deploy` has already been run against the target database
+- `DATABASE_URL` uses port `6543`
+- `DIRECT_URL` uses port `5432`
+- `npx prisma migrate deploy` has already run
 
-### Manual ingestion from Settings fails
+### Manual sync returns `403`
 
-That route should use `/api/sync` and requires an authenticated session. If it still fails, verify you are signed in and that the database connection works.
+Set `ADMIN_EMAILS` in production and sign in with one of those addresses.
+
+### Quotes look stale
+
+If `TWELVEDATA_API_KEY` is not configured, the app uses the fallback quote path and then falls back again to the latest stored `MarketSnapshot`.

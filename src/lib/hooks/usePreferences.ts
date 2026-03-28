@@ -7,6 +7,12 @@ export type UserPreferences = {
   regions: string[];
   symbols: string[];
   onboarded: boolean;
+  timezone: string;
+  digestHour: number;
+  emailDigestEnabled: boolean;
+  deliveryChannels: string[];
+  savedViewsEnabled: boolean;
+  plan: string;
 };
 
 export function usePreferences() {
@@ -27,7 +33,18 @@ export function usePreferences() {
   };
 
   return {
-    preferences: data ?? { categories: [], regions: [], symbols: [], onboarded: false },
+    preferences: data ?? {
+      categories: [],
+      regions: [],
+      symbols: [],
+      onboarded: false,
+      timezone: "UTC",
+      digestHour: 7,
+      emailDigestEnabled: true,
+      deliveryChannels: ["email"],
+      savedViewsEnabled: true,
+      plan: "free",
+    },
     isLoading,
     error,
     savePreferences,

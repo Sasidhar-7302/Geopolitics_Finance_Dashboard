@@ -1,6 +1,6 @@
 import { prisma } from "../prisma";
 import { categorizeEvent } from "../scoring/severity";
-import { fetchQuotes } from "../sources/yahoo";
+import { fetchMarketQuotes } from "../market";
 
 /* ─── keyword → symbol mapping (100+ entries) ─── */
 
@@ -249,12 +249,18 @@ export async function generateCorrelations() {
   }
 
   // Fetch live quotes for all matched symbols
-  let quoteMap = new Map<string, { price: number; changePct: number }>();
+  let quoteMap = new Map<string, { price: number; changePct: number; provider: string; freshness: "live" | "delayed" | "snapshot"; timestamp: string }>();
   if (symbolsNeeded.size > 0) {
     try {
-      const quotes = await fetchQuotes(Array.from(symbolsNeeded));
+      const { quotes } = await fetchMarketQuotes(Array.from(symbolsNeeded));
       for (const q of quotes) {
-        quoteMap.set(q.symbol, { price: q.price, changePct: q.changePct });
+        quoteMap.set(q.symbol, {
+          price: q.price,
+          changePct: q.changePct,
+          provider: q.provider,
+          freshness: q.freshness,
+          timestamp: q.timestamp,
+        });
       }
     } catch (err) {
       console.warn("[Correlation] Failed to fetch quotes:", (err as Error).message);
@@ -282,6 +288,7 @@ export async function generateCorrelations() {
         impactDirection,
         impactMagnitude,
         window: "24h",
+        category: entry.category,
       },
     });
 
@@ -293,7 +300,9 @@ export async function generateCorrelations() {
           price: quote.price,
           changePct: quote.changePct,
           assetClass: entry.category,
-          timestamp: new Date(),
+          timestamp: new Date(quote.timestamp),
+          provider: quote.provider,
+          freshness: quote.freshness,
         },
       });
     }

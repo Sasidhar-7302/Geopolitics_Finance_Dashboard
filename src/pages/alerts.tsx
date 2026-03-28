@@ -2,10 +2,12 @@ import { useState } from "react";
 import Layout from "../components/layout/Layout";
 import SectionCard from "../components/ui/SectionCard";
 import { useAlerts } from "../lib/hooks/useAlerts";
-import { requireAuth } from "../lib/requireAuth";
+import { useEntitlements } from "../lib/hooks/useEntitlements";
+import { requireAuth } from "../lib/serverAuth";
 
 export default function Alerts() {
   const { alerts, isLoading, mutate } = useAlerts();
+  const { entitlements } = useEntitlements();
   const [form, setForm] = useState({ name: "", condition: "" });
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
 
@@ -32,6 +34,11 @@ export default function Alerts() {
     <Layout>
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <SectionCard title="Active Alerts" subtitle="Notification triggers and watch rules">
+          {entitlements?.limits?.alerts !== null && (
+            <p className="mb-3 rounded-lg border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-[11px] text-zinc-500">
+              Free tier limit: {alerts.length}/{entitlements?.limits?.alerts ?? 3} active alerts. Premium will unlock unlimited alerting after beta.
+            </p>
+          )}
           <div className="space-y-2">
             {alerts.length === 0 && !isLoading ? (
               <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-6 text-center">

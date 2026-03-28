@@ -1,278 +1,108 @@
-# GeoPulse Intelligence — Market Data System
+# GeoPulse Market Data
 
 ## Overview
 
-GeoPulse fetches live stock/ETF quotes from **Google Finance** via HTML scraping and displays interactive charts using **TradingView** embedded widgets. No API keys required. $0 cost.
+GeoPulse now uses a provider abstraction instead of coupling the product directly to one quote source.
 
-**Source files:**
-- `src/lib/sources/yahoo.ts` — Google Finance quote scraper (file named yahoo.ts for historical reasons — originally used yahoo-finance2)
-- `src/components/ui/TradingViewChart.tsx` — TradingView widget components
+Current priority order:
 
----
+1. `TWELVEDATA_API_KEY` provider-backed delayed quotes
+2. HTML scraper fallback exposed as `google-finance-fallback`
+3. Latest stored `MarketSnapshot` rows from Postgres
 
-## Google Finance Quote Scraping
+This gives the UI a consistent contract even when live quote providers degrade.
 
-### Why Google Finance?
+Relevant files:
 
-| Approach | Status | Cost |
-|---|---|---|
-| yahoo-finance2 npm | Broken (API changed) | Free |
-| Yahoo Finance API | Requires paid key | $$ |
-| Alpha Vantage | 5 calls/min free tier | Free/Paid |
-| **Google Finance HTML** | **Working, reliable** | **Free** |
-| IEX Cloud | Requires API key | Paid |
+- `src/lib/market.ts`
+- `src/pages/api/markets/quotes.ts`
+- `src/lib/sources/yahoo.ts`
 
-Google Finance HTML pages contain price data in structured `data-*` attributes, making scraping reliable without API key overhead.
+## Quote Flow
 
-### How It Works
-
-```
-Request: GET https://www.google.com/finance/quote/SPY:NYSEARCA
-                                                        │
-                                                        ▼
-Parse HTML → Extract data-last-price attribute → $512.34
-           → Extract previous close → Calculate % change
+```text
+request symbols -> fetchMarketQuotes()
+                -> TwelveData if configured
+                -> scraper fallback if provider unavailable
+                -> latest MarketSnapshot rows if both fail
 ```
 
-### Symbol-to-Exchange Mapping
+Returned quote shape:
 
-Google Finance requires exchange suffix. The scraper maps symbols automatically:
-
-```typescript
-const EXCHANGE_MAP: Record<string, string> = {
-  // Major ETFs
-  SPY: "NYSEARCA", QQQ: "NASDAQ", EEM: "NYSEARCA",
-  GLD: "NYSEARCA", TLT: "NASDAQ", USO: "NYSEARCA",
-  ITA: "NYSEARCA", XLE: "NYSEARCA", XLV: "NYSEARCA",
-  XLF: "NYSEARCA", SMH: "NASDAQ", VXX: "CBOE",
-
-  // Stocks
-  NVDA: "NASDAQ", MSFT: "NASDAQ", AAPL: "NASDAQ",
-  TSM: "NYSE", LMT: "NYSE", RTX: "NYSE",
-  XOM: "NYSE", CVX: "NYSE", PFE: "NYSE",
-
-  // Country ETFs
-  FXI: "NYSEARCA", EWJ: "NYSEARCA", EWT: "NYSEARCA",
-  INDA: "NASDAQ", EWY: "NYSEARCA",
-
-  // Commodities/Alternatives
-  WEAT: "NYSEARCA", CORN: "NYSEARCA", URA: "NYSEARCA",
-  BITO: "NYSEARCA", ICLN: "NASDAQ",
-  // ... 60+ symbols total
-};
-```
-
-### Batch Processing
-
-Quotes are fetched in batches of 5 using `Promise.allSettled`:
-
-```typescript
-async function fetchQuotes(symbols: string[]): Promise<QuoteMap> {
-  const batches = chunk(symbols, 5);
-  const results: QuoteMap = {};
-
-  for (const batch of batches) {
-    const settled = await Promise.allSettled(
-      batch.map(symbol => fetchSingleQuote(symbol))
-    );
-    // Process results, skip failures gracefully
-  }
-
-  return results;
+```json
+{
+  "symbol": "SPY",
+  "price": 512.34,
+  "changePct": 0.45,
+  "provider": "twelvedata",
+  "freshness": "delayed",
+  "timestamp": "2026-03-26T12:00:00.000Z"
 }
 ```
 
-### Caching
+Freshness values:
 
-The `/api/markets/quotes` endpoint caches quotes for 2 minutes:
+- `live`
+- `delayed`
+- `snapshot`
 
-```
-First request:  Fetch from Google Finance → cache → return
-Within 2 min:   Return cached data (instant)
-After 2 min:    Fetch fresh data → update cache → return
-On error:       Return stale cache (better than nothing)
-```
+## Persistence Strategy
 
-### Error Handling
+Whenever provider or fallback quotes resolve successfully, the app stores them into `MarketSnapshot`.
 
-- **Symbol not found:** Returns `{ price: 0, changePct: 0 }` placeholder
-- **Network error:** Falls back to cached data or zero-price placeholder
-- **Exchange mismatch:** Tries alternative exchanges (NASDAQ → NYSE → NYSEARCA)
-- **Futures symbols:** Returns placeholder (Google Finance doesn't support futures)
+That turns quotes into a persistent cache instead of relying only on in-memory server state. If the provider path is down, GeoPulse can still show the latest known values with explicit freshness labeling.
 
----
+If the provider path returns only a partial symbol set, GeoPulse now fills the missing symbols from the latest stored snapshots instead of returning raw zero-price placeholders.
 
-## Supported Symbols (60+)
+Stored fields include:
 
-### ETFs
-| Symbol | Name | Category |
-|---|---|---|
-| SPY | S&P 500 ETF | US Market Index |
-| QQQ | Nasdaq 100 ETF | US Tech Index |
-| EEM | Emerging Markets ETF | International |
-| GLD | Gold ETF | Safe Haven |
-| TLT | 20+ Year Treasury ETF | Bonds |
-| USO | US Oil Fund | Energy |
-| UNG | US Natural Gas Fund | Energy |
-| XLE | Energy Select Sector | Energy |
-| XLV | Health Care Select | Healthcare |
-| XLF | Financial Select | Financials |
-| XLI | Industrial Select | Industrials |
-| ITA | US Aerospace & Defense | Defense |
-| SMH | VanEck Semiconductor | Technology |
-| ICLN | iShares Clean Energy | Green Energy |
-| TAN | Solar ETF | Green Energy |
-| HACK | Cybersecurity ETF | Technology |
-| XBI | Biotech ETF | Healthcare |
-| BDRY | Dry Bulk Shipping | Shipping |
-| WEAT | Wheat ETF | Agriculture |
-| CORN | Corn ETF | Agriculture |
-| DBA | Agriculture ETF | Agriculture |
-| VXX | Volatility Index | Volatility |
-| BITO | Bitcoin Strategy | Crypto |
-| URA | Uranium ETF | Nuclear |
-| UUP | US Dollar Index | Currency |
-| FXE | Euro Currency | Currency |
-| TIP | TIPS Bond ETF | Inflation |
-| IYR | Real Estate ETF | Real Estate |
+- `symbol`
+- `price`
+- `changePct`
+- `assetClass`
+- `provider`
+- `freshness`
+- `timestamp`
 
-### Country ETFs
-| Symbol | Name | Country |
-|---|---|---|
-| FXI | China Large-Cap | China |
-| EWJ | Japan ETF | Japan |
-| EWT | Taiwan ETF | Taiwan |
-| EWY | South Korea ETF | South Korea |
-| INDA | India ETF | India |
-| RSX | Russia ETF | Russia |
-| EWZ | Brazil ETF | Brazil |
-| EWW | Mexico ETF | Mexico |
+## Why This Design
 
-### Individual Stocks
-| Symbol | Name | Sector |
-|---|---|---|
-| NVDA | NVIDIA | Semiconductors |
-| MSFT | Microsoft | Technology |
-| AAPL | Apple | Technology |
-| TSM | Taiwan Semiconductor | Semiconductors |
-| LMT | Lockheed Martin | Defense |
-| RTX | Raytheon | Defense |
-| NOC | Northrop Grumman | Defense |
-| GD | General Dynamics | Defense |
-| XOM | ExxonMobil | Energy |
-| CVX | Chevron | Energy |
-| PFE | Pfizer | Healthcare |
-| MRNA | Moderna | Healthcare |
-| IBM | IBM | Technology |
-| PANW | Palo Alto Networks | Cybersecurity |
-| CCJ | Cameco | Uranium |
+The earlier approach depended directly on the scraper path. That was acceptable for prototyping, but not strong enough for a product that wants:
 
----
+- clearer freshness semantics
+- provider swap flexibility
+- a durable cache
+- more reliable degradation behavior
 
-## TradingView Integration
+The current design keeps the UI contract stable while making it possible to move to better licensed feeds later without rewriting the app.
 
-### Widgets Used
+## Fallback Behavior
 
-Three TradingView widget types are embedded via iframe/script injection:
+### TwelveData configured
 
-#### 1. Advanced Chart (`TradingViewChart`)
-Full interactive candlestick chart with volume, indicators, and drawing tools. Used on the stock detail page (`/stock/[symbol]`).
+- Quotes come from TwelveData
+- `provider = "twelvedata"`
+- `freshness = "delayed"`
 
-```typescript
-// Usage in stock/[symbol].tsx
-<TradingViewChart symbol={symbol} />
-```
+### TwelveData unavailable but fallback succeeds
 
-Features:
-- Candlestick chart with OHLC data
-- Volume bars
-- Moving averages, RSI, MACD (user-selectable)
-- Timeframe selection (1D, 1W, 1M, 3M, 1Y, 5Y)
-- Drawing tools (trendlines, fibonacci, etc.)
-- Dark theme matching GeoPulse UI
+- Quotes come from the scraper wrapper
+- `provider = "google-finance-fallback"`
+- `freshness = "delayed"`
 
-#### 2. Mini Chart (`MiniChart`)
-Compact area chart showing recent price action. Used on event detail pages for each affected stock.
+### Both network paths fail
 
-```typescript
-// Usage in event/[id].tsx
-<MiniChart symbol={symbol} />
-```
+- Quotes come from the most recent `MarketSnapshot`
+- `provider = "snapshot-cache"`
+- `freshness = "snapshot"`
+- `cached = true`
 
-Features:
-- Area/line chart
-- Last 30 days of data
-- Compact size (fits in a card alongside event data)
-- Dark theme
+## TradingView
 
-#### 3. Symbol Overview (`SymbolOverview`)
-Tabbed widget showing price, chart, and key statistics. Used for quick reference.
+Interactive charts are still rendered through TradingView embeds on symbol and event detail pages. TradingView is charting and visualization only; it is not the server-side quote provider for GeoPulse API routes.
 
-### Implementation
+## Operational Notes
 
-TradingView widgets are loaded via `<script>` injection into a container div:
-
-```typescript
-function TradingViewChart({ symbol }: { symbol: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      symbol: mapToTradingViewSymbol(symbol),
-      theme: "dark",
-      width: "100%",
-      height: 500,
-      // ... widget config
-    });
-    containerRef.current?.appendChild(script);
-
-    return () => { /* cleanup */ };
-  }, [symbol]);
-
-  return <div ref={containerRef} />;
-}
-```
-
-### Symbol Mapping for TradingView
-
-TradingView uses different symbol format than Google Finance:
-
-```
-GeoPulse symbol  →  TradingView symbol
-SPY              →  AMEX:SPY
-NVDA             →  NASDAQ:NVDA
-GLD              →  AMEX:GLD
-TSM              →  NYSE:TSM
-```
-
----
-
-## Data Flow Summary
-
-```
-┌─────────────────────┐     ┌──────────────────────┐
-│  Google Finance     │     │  TradingView CDN     │
-│  (HTML scraping)    │     │  (widgets)           │
-└──────────┬──────────┘     └──────────┬───────────┘
-           │                           │
-    Server-side fetch           Client-side embed
-           │                           │
-           ▼                           ▼
-┌──────────────────┐        ┌──────────────────────┐
-│ /api/markets/    │        │  Stock Detail Page    │
-│ quotes endpoint  │        │  Event Detail Page    │
-│ (2min cache)     │        │  (live TradingView)   │
-└──────────┬───────┘        └──────────────────────┘
-           │
-           ▼
-┌──────────────────┐
-│  SWR useQuotes   │
-│  hook (client)   │
-│  → Dashboard     │
-│  → Event cards   │
-│  → Stock prices  │
-└──────────────────┘
-```
+- Set `TWELVEDATA_API_KEY` when you want the preferred provider path
+- Leave it unset if you want to run with fallback behavior only
+- Do not present the fallback scraper as a fully licensed market-data strategy for a paid product
+- User-facing copy should describe this path as delayed fallback data, not as live exchange-grade pricing

@@ -7,7 +7,8 @@ import SymbolHoverCard from "../components/ui/SymbolHoverCard";
 import { useEvents } from "../lib/hooks/useEvents";
 import { useQuotes, type Quote } from "../lib/hooks/useQuotes";
 import { relativeTime, formatPct, formatCurrency } from "../lib/format";
-import { requireAuth } from "../lib/requireAuth";
+import { resolveCorrelationMove } from "../lib/marketDisplay";
+import { requireAuth } from "../lib/serverAuth";
 
 const EVENT_CATEGORIES = [
   { key: "all", label: "All" },
@@ -193,8 +194,12 @@ export default function Timeline() {
                         <div className="space-y-1.5">
                           {correlations.slice(0, 4).map((corr) => {
                             const quote = quoteMap.get(corr.symbol);
-                            const change = quote?.changePct ?? corr.impactMagnitude;
-                            const isUp = corr.impactDirection === "up" || change > 0;
+                            const change = resolveCorrelationMove({
+                              liveChange: quote?.changePct,
+                              impactDirection: corr.impactDirection,
+                              impactMagnitude: corr.impactMagnitude,
+                            });
+                            const isUp = change >= 0;
                             return (
                               <SymbolHoverCard key={corr.id} symbol={corr.symbol}>
                                 <Link href={`/stock/${corr.symbol}`} className="flex items-center justify-between text-xs hover:bg-white/[0.04] rounded px-1 -mx-1 py-0.5 transition">
@@ -208,7 +213,7 @@ export default function Timeline() {
                                     )}
                                   </div>
                                   <span className={`font-bold ${isUp ? "text-emerald" : "text-red-400"}`}>
-                                    {isUp ? "\u25B2" : "\u25BC"} {formatPct(isUp ? Math.abs(change) : -Math.abs(change))}
+                                    {isUp ? "\u25B2" : "\u25BC"} {formatPct(change)}
                                   </span>
                                 </Link>
                               </SymbolHoverCard>

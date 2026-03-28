@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { useState } from "react";
 import PublicLayout from "../../components/layout/PublicLayout";
 import InputField from "../../components/ui/InputField";
+import { getSupabaseBrowserClient } from "../../lib/supabase-browser";
 
 export default function SignUp() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [status, setStatus] = useState<"idle" | "saving" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "signing-in" | "done">("idle");
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -18,17 +21,37 @@ export default function SignUp() {
     const response = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        digestHour: 7,
+      }),
     });
 
+    const payload = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-      setError("Unable to create account.");
+      setError(payload.error || "Unable to create account.");
       setStatus("idle");
       return;
     }
 
+    setStatus("signing-in");
+    const signInResult = await getSupabaseBrowserClient().auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (signInResult.error) {
+      setError("Account created, but automatic sign-in failed. Please sign in manually.");
+      setStatus("done");
+      return;
+    }
+
     setStatus("done");
-    window.location.href = "/auth/signin";
+    await router.replace("/onboarding");
   };
 
   return (
@@ -45,6 +68,7 @@ export default function SignUp() {
               placeholder="Full name"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              autoComplete="name"
               required
             />
             <InputField
@@ -52,6 +76,7 @@ export default function SignUp() {
               placeholder="Email address"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
               required
             />
             <InputField
@@ -59,12 +84,13 @@ export default function SignUp() {
               placeholder="Password (min 6 characters)"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
               required
               minLength={6}
             />
             {error ? <p className="text-xs text-danger">{error}</p> : null}
-            <button type="submit" className="btn-primary w-full">
-              {status === "saving" ? "Creating..." : "Create account"}
+            <button type="submit" className="btn-primary w-full" disabled={status === "saving" || status === "signing-in"}>
+              {status === "saving" ? "Creating..." : status === "signing-in" ? "Signing you in..." : "Create account"}
             </button>
           </form>
 
