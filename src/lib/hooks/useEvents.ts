@@ -27,6 +27,7 @@ export type EventItem = {
   category?: string;
   tags?: string;
   relevanceScore?: number;
+  intelligenceQuality?: number;
   whyThisMatters?: string | null;
   supportingSourcesCount?: number;
   sourceReliability?: number;

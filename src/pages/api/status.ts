@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
 import { startScheduler } from "../../lib/ingest/scheduler";
+import { applyPublicReadGuard, sendPublicApiError } from "../../lib/publicApi";
 
 // Vercel uses vercel.json cron jobs. Keep the in-process scheduler for self-hosted runtimes only.
 if (process.env.VERCEL !== "1") {
@@ -63,48 +64,71 @@ function normalizeLastJob(
   };
 }
 
-export default async function handler(_req: NextApiRequest, res: NextApiResponse) {
-  const [lastLog, rawLastJob, eventCount, correlationCount, patternCount, recentEvents, degradedSources] = await Promise.all([
-    prisma.ingestionLog.findFirst({
-      orderBy: { startedAt: "desc" },
-    }),
-    prisma.ingestionJob.findFirst({
-      orderBy: { startedAt: "desc" },
-    }),
-    prisma.event.count(),
-    prisma.correlation.count(),
-    prisma.pattern.count(),
-    prisma.event.count({
-      where: {
-        publishedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      },
-    }),
-    prisma.sourceHealth.count({
-      where: {
-        status: { in: ["degraded", "failed"] },
-      },
-    }),
-  ]);
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
 
-  const lastJob = normalizeLastJob(lastLog, rawLastJob);
+  if (
+    !(await applyPublicReadGuard({
+      req,
+      res,
+      namespace: "status-read",
+      limit: 120,
+      windowMs: 60 * 1000,
+      cacheControl: "public, s-maxage=15, stale-while-revalidate=60",
+    }))
+  ) {
+    return;
+  }
 
-  res.status(200).json({
-    lastIngestion: lastLog
-      ? {
-          status: lastLog.status,
-          eventsFound: lastLog.eventsFound,
-          startedAt: lastLog.startedAt,
-          completedAt: lastLog.completedAt,
-          error: lastLog.error,
-        }
-      : null,
-    lastJob,
-    stats: {
-      totalEvents: eventCount,
-      recentEvents24h: recentEvents,
-      totalCorrelations: correlationCount,
-      totalPatterns: patternCount,
-      degradedSources,
-    },
-  });
+  try {
+    const [lastLog, rawLastJob, eventCount, correlationCount, patternCount, recentEvents, degradedSources] = await Promise.all([
+      prisma.ingestionLog.findFirst({
+        orderBy: { startedAt: "desc" },
+      }),
+      prisma.ingestionJob.findFirst({
+        orderBy: { startedAt: "desc" },
+      }),
+      prisma.event.count(),
+      prisma.correlation.count(),
+      prisma.pattern.count(),
+      prisma.event.count({
+        where: {
+          publishedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+      }),
+      prisma.sourceHealth.count({
+        where: {
+          status: { in: ["degraded", "failed"] },
+        },
+      }),
+    ]);
+
+    const lastJob = normalizeLastJob(lastLog, rawLastJob);
+
+    res.status(200).json({
+      lastIngestion: lastLog
+        ? {
+            status: lastLog.status,
+            eventsFound: lastLog.eventsFound,
+            startedAt: lastLog.startedAt,
+            completedAt: lastLog.completedAt,
+            error: lastLog.error,
+          }
+        : null,
+      lastJob,
+      stats: {
+        totalEvents: eventCount,
+        recentEvents24h: recentEvents,
+        totalCorrelations: correlationCount,
+        totalPatterns: patternCount,
+        degradedSources,
+      },
+    });
+  } catch {
+    sendPublicApiError(res, "Unable to load system status right now.");
+  }
 }

@@ -3,6 +3,7 @@ import type { EventItem } from "../../lib/hooks/useEvents";
 import type { Quote } from "../../lib/hooks/useQuotes";
 import SeverityBadge from "../ui/SeverityBadge";
 import SymbolHoverCard from "../ui/SymbolHoverCard";
+import TrustSummary from "../ui/TrustSummary";
 import { relativeTime, formatPct, formatCurrency } from "../../lib/format";
 import { resolveCorrelationDisplay } from "../../lib/marketDisplay";
 import { getQuoteBadgeLabel } from "../../lib/marketPresentation";
@@ -83,15 +84,15 @@ export default function EventMarketPanel({ events, quoteMap, emptyState }: Props
                     {event.whyThisMatters}
                   </p>
                 )}
+                <TrustSummary
+                  className="mt-2"
+                  compact
+                  supportingSourcesCount={event.supportingSourcesCount}
+                  sourceReliability={event.sourceReliability}
+                  intelligenceQuality={event.intelligenceQuality}
+                  publishedAt={event.publishedAt}
+                />
                 <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
-                  <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-zinc-400">
-                    {event.supportingSourcesCount ?? 1} source{(event.supportingSourcesCount ?? 1) === 1 ? "" : "s"}
-                  </span>
-                  {typeof event.sourceReliability === "number" && (
-                    <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-zinc-400">
-                      Source quality {Math.round(event.sourceReliability * 100)}%
-                    </span>
-                  )}
                   {event.category && (
                     <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-zinc-400">
                       {event.category.replace(/-/g, " ")}

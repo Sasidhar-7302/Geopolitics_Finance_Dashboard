@@ -17,8 +17,6 @@ export function getMarketProviderLabel(provider?: string) {
   switch (provider) {
     case "twelvedata":
       return "TwelveData";
-    case "google-finance-fallback":
-      return "Fallback scraper";
     case "snapshot-cache":
       return "Stored snapshots";
     case "none":

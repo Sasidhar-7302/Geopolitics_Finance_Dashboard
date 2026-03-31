@@ -4,6 +4,7 @@ import Layout from "../components/layout/Layout";
 import SectionCard from "../components/ui/SectionCard";
 import SeverityBadge from "../components/ui/SeverityBadge";
 import SymbolHoverCard from "../components/ui/SymbolHoverCard";
+import TrustSummary from "../components/ui/TrustSummary";
 import { useEvents } from "../lib/hooks/useEvents";
 import { useQuotes } from "../lib/hooks/useQuotes";
 import { usePatterns } from "../lib/hooks/usePatterns";
@@ -30,7 +31,11 @@ export default function Digest() {
 
         return {
           ...event,
-          digestScore: (event.relevanceScore ?? 0) + preferenceBoost + (event.supportingSourcesCount ?? 1),
+          digestScore:
+            (event.relevanceScore ?? 0)
+            + preferenceBoost
+            + (event.supportingSourcesCount ?? 1)
+            + ((event.intelligenceQuality ?? 0.5) * 2),
         };
       })
       .sort((a, b) => b.digestScore - a.digestScore);
@@ -133,6 +138,14 @@ export default function Digest() {
                             <span className="font-semibold text-emerald">Why it matters:</span> {story.whyThisMatters}
                           </p>
                         )}
+                        <TrustSummary
+                          className="mt-2"
+                          compact
+                          supportingSourcesCount={story.supportingSourcesCount}
+                          sourceReliability={story.sourceReliability}
+                          intelligenceQuality={story.intelligenceQuality}
+                          publishedAt={story.publishedAt}
+                        />
 
                         {(story.correlations?.length ?? 0) > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">

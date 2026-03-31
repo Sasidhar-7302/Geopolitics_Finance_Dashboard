@@ -286,3 +286,15 @@ model SourceHealth {
 
   @@unique([source, feedUrl])
 }
+
+model ApiRateLimit {
+  namespace  String
+  identifier String
+  count      Int      @default(0)
+  resetAt    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([namespace, identifier])
+  @@index([resetAt])
+}

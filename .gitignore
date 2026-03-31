@@ -21,7 +21,13 @@ Thumbs.db
 # env files
 .env
 .env.local
+.env.development
+.env.production
+.env.test
+.env.*
 .env*.local
+!.env.example
+!.env.test.example
 
 # debug
 npm-debug.log*
@@ -40,4 +46,5 @@ tsconfig.tsbuildinfo
 
 # tmp files
 tmp_*
+.tmp-*
 .vercel

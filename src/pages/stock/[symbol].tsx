@@ -292,7 +292,7 @@ export default function StockDetail() {
                   <span className="text-zinc-400">2. Correlation scoring:</span> Each event is linked to {upperSymbol} using asset mappings, category rules, and the system's event-to-market correlation engine.
                 </p>
                 <p>
-                  <span className="text-zinc-400">3. Market pricing:</span> Quote data comes from the configured delayed provider when available, then the scraper fallback, then the latest stored snapshot.
+                  <span className="text-zinc-400">3. Market pricing:</span> Quote data comes from the configured delayed provider when available, then the latest stored snapshot cache when provider data is missing.
                 </p>
                 <p>
                   <span className="text-zinc-400">4. Pattern learning:</span> As more linked events accumulate, GeoPulse estimates how {upperSymbol} tends to react to similar categories and shows that confidence level here.

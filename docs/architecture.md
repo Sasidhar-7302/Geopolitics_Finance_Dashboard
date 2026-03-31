@@ -61,7 +61,6 @@ graph LR
 
 - Market quotes now flow through a provider abstraction in `src/lib/market.ts`.
 - Preferred path: licensed/provider-backed API when configured via environment variables.
-- Current fallback path: delayed HTML scraper exposed in metadata as `google-finance-fallback`.
 - Persistent fallback: latest `MarketSnapshot` rows from Postgres.
 - Client surfaces now expose freshness explicitly as `live`, `delayed`, or `snapshot`.
 
@@ -88,6 +87,7 @@ What is already improved:
 - staged ingestion job records
 - source health tracking
 - persistent market snapshot fallback
+- Postgres-backed shared rate limiting for public preview APIs
 - server-side event query contract
 - billing + entitlements scaffolding
 - a public preview path that shows real product value without requiring auth first
@@ -98,7 +98,7 @@ What still remains for a later scale pass:
 - true queue-backed workers rather than request-driven ingestion execution
 - dedicated email delivery provider integration
 - richer provider-backed market data
-- stronger observability and rate limiting
+- stronger observability
 - full-text search optimization in Postgres
 
 ## Key API Contracts

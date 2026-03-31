@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { GetServerSidePropsContext, InferGetServerSidePropsType } from "next";
 import PublicLayout from "../components/layout/PublicLayout";
 import SymbolHoverCard from "../components/ui/SymbolHoverCard";
+import TrustSummary from "../components/ui/TrustSummary";
 import { formatCurrency, formatPct, relativeTime } from "../lib/format";
 import { getMarketFreshnessLabel } from "../lib/marketPresentation";
 import { getPublicPreviewData } from "../lib/publicPreview";
@@ -75,6 +76,9 @@ export default function Home({
                 GeoPulse turns geopolitical events into investor-ready context. The public preview shows the live surface. Free accounts unlock the full dashboard.
                 Premium is reserved for deeper workflows, higher limits, and faster briefings.
               </p>
+              <p className="max-w-2xl text-sm leading-6 text-zinc-500">
+                The preview now prioritizes stories with stronger confirmation, cleaner source mixes, and clearer market relevance instead of showing every headline that happened to mention risk.
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -132,6 +136,7 @@ export default function Home({
               <div>
                 <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Live preview</p>
                 <h2 className="mt-2 text-2xl font-bold text-white">High-signal stories from the last 72 hours</h2>
+                <p className="mt-1 text-sm text-zinc-500">The public preview favors stories with clearer confirmation and more defensible market relevance.</p>
               </div>
               <div className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-500">
                 Last ingestion {preview.lastIngestion?.completedAt ? relativeTime(preview.lastIngestion.completedAt) : "not available"}
@@ -152,6 +157,13 @@ export default function Home({
                   <p className="mt-2 text-sm leading-6 text-zinc-400">
                     {story.whyThisMatters || story.summary}
                   </p>
+                  <TrustSummary
+                    className="mt-3"
+                    supportingSourcesCount={story.supportingSourcesCount}
+                    sourceReliability={story.sourceReliability}
+                    intelligenceQuality={story.intelligenceQuality}
+                    publishedAt={story.publishedAt}
+                  />
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-1.5">
                       {story.correlations.slice(0, 4).map((correlation) => (

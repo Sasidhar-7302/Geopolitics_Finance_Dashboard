@@ -33,6 +33,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    const effectivePlan = subscription?.plan || pref.plan || "free";
+
     return res.json({
       categories: parseStringArray(pref.categories),
       regions: parseStringArray(pref.regions),
@@ -43,11 +45,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       emailDigestEnabled: pref.emailDigestEnabled,
       deliveryChannels: parseStringArray(pref.deliveryChannels),
       savedViewsEnabled: pref.savedViewsEnabled,
-      plan: pref.plan,
+      plan: effectivePlan,
     });
   }
 
   if (req.method === "POST" || req.method === "PUT") {
+    const subscription = await prisma.subscription.findUnique({
+      where: { userId: user.id },
+    });
+    const effectivePlan = subscription?.plan || "free";
+
     const {
       categories,
       regions,
@@ -57,7 +64,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       emailDigestEnabled,
       deliveryChannels,
       savedViewsEnabled,
-      plan,
     } = req.body as {
       categories?: string[];
       regions?: string[];
@@ -67,7 +73,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       emailDigestEnabled?: boolean;
       deliveryChannels?: string[];
       savedViewsEnabled?: boolean;
-      plan?: string;
     };
 
     const [pref] = await Promise.all([
@@ -84,7 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         emailDigestEnabled: emailDigestEnabled ?? true,
         deliveryChannels: stringifyStringArray(deliveryChannels || ["email"]),
         savedViewsEnabled: savedViewsEnabled ?? true,
-        plan: plan || "free",
+        plan: effectivePlan,
       },
       update: {
         categories: stringifyStringArray(categories || []),
@@ -96,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         emailDigestEnabled: typeof emailDigestEnabled === "boolean" ? emailDigestEnabled : undefined,
         deliveryChannels: deliveryChannels ? stringifyStringArray(deliveryChannels) : undefined,
         savedViewsEnabled: typeof savedViewsEnabled === "boolean" ? savedViewsEnabled : undefined,
-        plan: plan || undefined,
+        plan: effectivePlan,
       },
       }),
       prisma.digestSubscription.upsert({
@@ -115,17 +120,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           deliveryChannels: deliveryChannels ? stringifyStringArray(deliveryChannels) : undefined,
         },
       }),
-      prisma.subscription.upsert({
-        where: { userId: user.id },
-        create: {
-          userId: user.id,
-          status: "beta",
-          plan: plan || "free",
-        },
-        update: {
-          plan: plan || undefined,
-        },
-      }),
     ]);
 
     return res.json({
@@ -138,7 +132,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       emailDigestEnabled: pref.emailDigestEnabled,
       deliveryChannels: parseStringArray(pref.deliveryChannels),
       savedViewsEnabled: pref.savedViewsEnabled,
-      plan: pref.plan,
+      plan: effectivePlan,
     });
   }
 

@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../lib/prisma";
+import { enforceRateLimit, getRequestIp } from "../../../lib/rateLimit";
 import { getSupabaseAdminClient } from "../../../lib/supabase-admin";
 import { verifyLegacyUser } from "../../../lib/auth";
 
@@ -22,8 +23,36 @@ export default async function handler(
     return;
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const requestIp = getRequestIp(req);
+  const ipLimit = await enforceRateLimit({
+    req,
+    res,
+    namespace: "auth-migrate-ip",
+    key: requestIp,
+    limit: 10,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (!ipLimit.allowed) {
+    res.status(429).json({ error: "Too many sign-in attempts. Try again later." });
+    return;
+  }
+
+  const emailLimit = await enforceRateLimit({
+    req,
+    res,
+    namespace: "auth-migrate-email",
+    key: normalizedEmail,
+    limit: 6,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (!emailLimit.allowed) {
+    res.status(429).json({ error: "Too many sign-in attempts for this email. Try again later." });
+    return;
+  }
+
   const legacyUser = await verifyLegacyUser({
-    email,
+    email: normalizedEmail,
     password,
   });
 
@@ -48,7 +77,7 @@ export default async function handler(
   });
 
   if (error) {
-    res.status(409).json({ error: error.message });
+    res.status(409).json({ error: "Legacy account migration could not be completed automatically." });
     return;
   }
 

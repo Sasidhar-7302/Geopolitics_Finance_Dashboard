@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const result = await ingestEvents();
     res.status(200).json({ ok: true, ingested: result.count, errors: result.errors });
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+  } catch {
+    res.status(500).json({ error: "Ingestion failed" });
   }
 }

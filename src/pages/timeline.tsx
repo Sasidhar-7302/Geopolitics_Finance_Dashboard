@@ -98,16 +98,16 @@ export default function Timeline() {
         subtitle={`${filtered.length} events | Geopolitical signals with market impact evidence`}
       >
         {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-4">
+        <div className="mb-4 flex flex-col gap-3 border-b border-white/[0.06] pb-4">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search events..."
-            className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald/30 focus:outline-none w-48"
+            className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald/30 focus:outline-none sm:max-w-xs"
           />
 
           {/* Category pills */}
-          <div className="flex flex-wrap gap-1.5">
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
             {EVENT_CATEGORIES.map(({ key, label }) => (
               <button
                 key={key}
@@ -123,11 +123,11 @@ export default function Timeline() {
             ))}
           </div>
 
-          <div className="flex gap-2 ml-auto">
+          <div className="grid gap-2 sm:grid-cols-2 lg:ml-auto lg:w-auto">
             <select
               value={selectedRegion}
               onChange={(e) => setSelectedRegion(e.target.value)}
-              className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-1.5 text-xs text-zinc-200"
+              className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200"
             >
               <option value="all">All Regions</option>
               {availableRegions.map((r) => (
@@ -137,7 +137,7 @@ export default function Timeline() {
             <select
               value={selectedSeverity}
               onChange={(e) => setSelectedSeverity(e.target.value)}
-              className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-1.5 text-xs text-zinc-200"
+              className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200"
             >
               <option value="all">All Severity</option>
               <option value="3">3+</option>

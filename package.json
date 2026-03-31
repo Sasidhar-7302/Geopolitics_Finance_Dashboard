@@ -9,6 +9,11 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
+    "security:secrets": "node scripts/check-secrets.mjs",
+    "test": "npm run test:unit",
+    "test:unit": "node --import tsx --test tests/**/*.test.ts",
+    "smoke:beta": "npx tsx scripts/smoke-beta.ts",
+    "create:premium-user": "npx tsx scripts/create-premium-user.ts",
     "seed": "npx tsx prisma/seed.ts",
     "ingest": "npx tsx scripts/ingest.ts",
     "backfill:intelligence": "npx tsx scripts/backfill-event-intelligence.ts"

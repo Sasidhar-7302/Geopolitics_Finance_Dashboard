@@ -10,6 +10,11 @@ export async function bootstrapUserProductState(userId: string, options?: {
   const timezone = options?.timezone || "UTC";
   const digestHour = options?.digestHour ?? 7;
   const channels = stringifyStringArray(options?.deliveryChannels ?? ["email"]);
+  const preferenceUpdate = {
+    ...(options?.timezone ? { timezone } : {}),
+    ...(options?.digestHour !== undefined ? { digestHour } : {}),
+    ...(options?.deliveryChannels ? { deliveryChannels: channels } : {}),
+  };
 
   await Promise.all([
     prisma.subscription.upsert({
@@ -24,11 +29,7 @@ export async function bootstrapUserProductState(userId: string, options?: {
     }),
     prisma.digestSubscription.upsert({
       where: { userId },
-      update: {
-        timezone,
-        digestHour,
-        deliveryChannels: channels,
-      },
+      update: preferenceUpdate,
       create: {
         userId,
         timezone,
@@ -38,11 +39,7 @@ export async function bootstrapUserProductState(userId: string, options?: {
     }),
     prisma.userPreference.upsert({
       where: { userId },
-      update: {
-        timezone,
-        digestHour,
-        deliveryChannels: channels,
-      },
+      update: preferenceUpdate,
       create: {
         userId,
         categories: "[]",

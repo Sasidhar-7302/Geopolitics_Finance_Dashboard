@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import useSWR from "swr";
 import Layout from "../../components/layout/Layout";
 import SeverityBadge from "../../components/ui/SeverityBadge";
+import TrustSummary from "../../components/ui/TrustSummary";
 import { relativeTime, formatPct, formatCurrency } from "../../lib/format";
 import { resolveCorrelationDisplay, resolvePatternMove } from "../../lib/marketDisplay";
 import { getQuoteBadgeLabel } from "../../lib/marketPresentation";
@@ -36,6 +37,7 @@ interface EventData {
   severity: number;
   url?: string;
   category?: string;
+  intelligenceQuality?: number;
   whyThisMatters?: string | null;
   supportingSourcesCount?: number;
   sourceReliability?: number;
@@ -227,6 +229,13 @@ export default function EventDetail() {
               <p className="mt-1 text-sm leading-relaxed text-zinc-300">{event.whyThisMatters}</p>
             </div>
           )}
+          <TrustSummary
+            className="mt-4"
+            supportingSourcesCount={event.supportingSourcesCount ?? data?.trust?.supportingSourcesCount}
+            sourceReliability={event.sourceReliability ?? data?.trust?.sourceReliability}
+            intelligenceQuality={event.intelligenceQuality}
+            publishedAt={event.publishedAt}
+          />
           <div className="mt-4 flex flex-wrap gap-2 text-[11px]">
             <span className="rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-zinc-400">
               {(event.supportingSourcesCount ?? data?.trust?.supportingSourcesCount ?? 1)} confirming sources

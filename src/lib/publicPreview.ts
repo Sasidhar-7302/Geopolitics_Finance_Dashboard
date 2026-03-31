@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { getAssetMeta } from "./assets";
 import { summarizeEventIntelligence } from "./intelligence";
+import { summarizeStoryTrust } from "./trust";
 
 const PREVIEW_WINDOW_HOURS = 72;
 const RECENT_WINDOW_HOURS = 24;
@@ -22,6 +23,7 @@ type PreviewStory = {
   publishedAt: string;
   category: string;
   relevanceScore: number;
+  intelligenceQuality: number;
   whyThisMatters: string | null;
   supportingSourcesCount: number;
   sourceReliability: number;
@@ -129,7 +131,7 @@ export async function getPublicPreviewData(): Promise<PublicPreviewData> {
           { severity: "desc" },
           { publishedAt: "desc" },
         ],
-        take: 8,
+        take: 18,
         include: {
           correlations: {
             select: {
@@ -181,15 +183,30 @@ export async function getPublicPreviewData(): Promise<PublicPreviewData> {
       publishedAt: event.publishedAt.toISOString(),
       category: intelligence.category,
       relevanceScore: intelligence.relevanceScore,
+      intelligenceQuality: intelligence.intelligenceQuality,
       whyThisMatters: intelligence.whyThisMatters,
       supportingSourcesCount: event.supportingSourcesCount,
       sourceReliability: event.sourceReliability,
       correlations: event.correlations,
     };
+  })
+    .sort((a, b) => {
+      const aTrust = summarizeStoryTrust(a).overallScore;
+      const bTrust = summarizeStoryTrust(b).overallScore;
+      const aScore = a.relevanceScore + aTrust * 4 + Math.min(3, a.supportingSourcesCount);
+      const bScore = b.relevanceScore + bTrust * 4 + Math.min(3, b.supportingSourcesCount);
+      return bScore - aScore;
+    });
+
+  const trustedPreviewStories = previewStories.filter((story) => {
+    const trust = summarizeStoryTrust(story);
+    return trust.overallScore >= 0.58 || story.supportingSourcesCount >= 2;
   });
 
+  const visiblePreviewStories = (trustedPreviewStories.length >= 6 ? trustedPreviewStories : previewStories).slice(0, 6);
+
   const hotspots = Object.entries(
-    previewStories.reduce<Record<string, number>>((acc, story) => {
+    visiblePreviewStories.reduce<Record<string, number>>((acc, story) => {
       acc[story.region] = (acc[story.region] || 0) + 1;
       return acc;
     }, {})
@@ -198,7 +215,7 @@ export async function getPublicPreviewData(): Promise<PublicPreviewData> {
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 
-  const topMovers = await readLatestSnapshots(pickPreviewSymbols(previewStories));
+  const topMovers = await readLatestSnapshots(pickPreviewSymbols(visiblePreviewStories));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -217,7 +234,7 @@ export async function getPublicPreviewData(): Promise<PublicPreviewData> {
       registeredUsers,
       foundingSpotsRemaining: Math.max(0, 1000 - registeredUsers),
     },
-    previewStories,
+    previewStories: visiblePreviewStories,
     hotspots,
     topMovers,
   };

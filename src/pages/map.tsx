@@ -161,17 +161,17 @@ export default function MapView() {
 
   return (
     <Layout>
-      <div className="flex gap-4">
+      <div className="flex flex-col gap-4 xl:flex-row">
         {/* Main map area */}
         <div className={`flex-1 min-w-0 transition-all duration-300 ${selectedData ? "lg:mr-0" : ""}`}>
           <div className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] p-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-[15px] font-semibold text-white">Global Threat Map</h2>
                 <p className="text-[11px] text-zinc-500">Click any country to view its news events and market impact</p>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3 rounded-lg bg-black/40 px-3 py-1.5">
+              <div className="flex flex-col gap-2 sm:items-end">
+                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/40 px-3 py-1.5">
                   {[
                     { label: "Low", color: "#10b981" },
                     { label: "Med", color: "#eab308" },
@@ -191,10 +191,7 @@ export default function MapView() {
             </div>
 
             {/* Map */}
-            <div
-              className="relative w-full overflow-hidden rounded-lg border border-white/[0.04] bg-[#08080c]"
-              style={{ aspectRatio: "2.2 / 1" }}
-            >
+            <div className="relative aspect-[1.15/1] w-full overflow-hidden rounded-lg border border-white/[0.04] bg-[#08080c] sm:aspect-[1.5/1] lg:aspect-[1.8/1] xl:aspect-[2.2/1]">
               <ComposableMap
                 projection="geoMercator"
                 projectionConfig={{ scale: 145, center: [20, 20] }}
@@ -357,8 +354,8 @@ export default function MapView() {
 
         {/* Side panel - slides in when a country is selected */}
         {selectedData && (
-          <div className="w-[420px] shrink-0 animate-in slide-in-from-right-5 duration-200">
-            <div className="sticky top-4 rounded-xl border border-white/[0.06] bg-[#0A0A0A] overflow-hidden max-h-[calc(100vh-120px)] flex flex-col">
+          <div className="w-full shrink-0 animate-in slide-in-from-right-5 duration-200 xl:w-[420px]">
+            <div className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-[#0A0A0A] xl:sticky xl:top-4 xl:max-h-[calc(100vh-120px)]">
               {/* Header */}
               <div className="border-b border-white/[0.06] p-4">
                 <div className="flex items-center justify-between">

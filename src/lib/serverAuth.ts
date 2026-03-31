@@ -5,12 +5,14 @@ import type {
   NextApiResponse,
 } from "next";
 import { syncSupabaseUserProfile } from "./auth";
+import { bootstrapUserProductState } from "./userBootstrap";
+import { grantLifetimePremium } from "./premium";
 import { createSupabaseApiClient, createSupabasePageClient } from "./supabase-server";
 
 async function getUserFromSupabase(
   supabaseUser: SupabaseUser
 ) {
-  return syncSupabaseUserProfile({
+  const user = await syncSupabaseUserProfile({
     email: supabaseUser.email || "",
     name:
       (typeof supabaseUser.user_metadata?.name === "string"
@@ -21,6 +23,17 @@ async function getUserFromSupabase(
         : null),
     supabaseAuthId: supabaseUser.id,
   });
+
+  const hasLifetimePremium =
+    supabaseUser.user_metadata?.lifetimePremium === true ||
+    supabaseUser.user_metadata?.plan === "premium";
+
+  if (hasLifetimePremium) {
+    await bootstrapUserProductState(user.id);
+    await grantLifetimePremium(user.id);
+  }
+
+  return user;
 }
 
 export async function getAuthenticatedApiUser(

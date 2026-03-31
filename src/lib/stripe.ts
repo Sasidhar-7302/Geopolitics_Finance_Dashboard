@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { ensureDefaultEntitlements } from "./entitlements";
 import { prisma } from "./prisma";
 
 let stripe: Stripe | null = null;
@@ -32,10 +33,19 @@ export async function syncSubscriptionFromStripe(subscription: Stripe.Subscripti
     return null;
   }
 
+  const hasPremiumPrice = subscription.items.data.some(
+    (item) =>
+      item.price.id === process.env.STRIPE_PRICE_ID_YEARLY ||
+      item.price.id === process.env.STRIPE_PRICE_ID_MONTHLY
+  );
+  const premiumStatuses = new Set<Stripe.Subscription.Status>([
+    "active",
+    "trialing",
+  ]);
   const plan =
-    subscription.items.data.some((item) => item.price.id === process.env.STRIPE_PRICE_ID_YEARLY || item.price.id === process.env.STRIPE_PRICE_ID_MONTHLY)
+    hasPremiumPrice && premiumStatuses.has(subscription.status)
       ? "premium"
-      : existing.plan;
+      : "free";
 
   const updated = await prisma.subscription.update({
     where: { id: existing.id },
@@ -60,14 +70,9 @@ export async function syncSubscriptionFromStripe(subscription: Stripe.Subscripti
         plan,
       },
     }),
-    prisma.entitlement.updateMany({
-      where: { userId: updated.userId },
-      data: {
-        enabled: true,
-        source: plan,
-      },
-    }),
   ]);
+
+  await ensureDefaultEntitlements(updated.userId);
 
   return updated;
 }

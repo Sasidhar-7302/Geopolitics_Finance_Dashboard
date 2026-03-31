@@ -228,6 +228,10 @@ export default function Onboarding() {
           <div>
             <h2 className="mb-1 text-lg font-semibold text-white">What stocks do you follow?</h2>
             <p className="mb-5 text-xs text-zinc-500">Select the ETFs and stocks you want to track.</p>
+            <div className="mb-5 rounded-xl border border-emerald/15 bg-emerald/5 p-4 text-[11px] leading-5 text-zinc-400">
+              <p className="font-semibold text-white">What happens next</p>
+              <p className="mt-1">You will land on the dashboard with your feed tuned to these interests. The best first check-in is Morning Brief, then one saved view for the region or sector you care about most.</p>
+            </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {POPULAR_SYMBOLS.map(({ symbol, name }) => {
                 const active = symbols.includes(symbol);

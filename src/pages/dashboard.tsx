@@ -155,8 +155,8 @@ export default function Dashboard() {
         return false;
       })
       .sort((a, b) => {
-        const aScore = (a.relevanceScore ?? 0) + (a.supportingSourcesCount ?? 0);
-        const bScore = (b.relevanceScore ?? 0) + (b.supportingSourcesCount ?? 0);
+        const aScore = (a.relevanceScore ?? 0) + (a.supportingSourcesCount ?? 0) + ((a.intelligenceQuality ?? 0.5) * 2);
+        const bScore = (b.relevanceScore ?? 0) + (b.supportingSourcesCount ?? 0) + ((b.intelligenceQuality ?? 0.5) * 2);
         return bScore - aScore;
       });
   }, [activeCategory, fetchedEvents, hasPreferences, preferences]);
@@ -537,6 +537,34 @@ export default function Dashboard() {
         </SectionCard>
 
         <div className="space-y-4">
+          {hasPreferences && savedFilters.length === 0 && (
+            <SectionCard
+              title="Start Here"
+              subtitle="The quickest path to daily usefulness is brief -> focused view -> repeat."
+            >
+              <div className="space-y-2 text-[11px] text-zinc-500">
+                <Link
+                  href="/digest"
+                  className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
+                >
+                  <p className="font-semibold text-white">1. Check Morning Brief</p>
+                  <p className="mt-1 text-zinc-500">Use the ranked digest first. It is the fastest daily read.</p>
+                </Link>
+                <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+                  <p className="font-semibold text-white">2. Save one dashboard view</p>
+                  <p className="mt-1 text-zinc-500">Create a reusable region, sector, or ticker view so your second visit is faster than the first.</p>
+                </div>
+                <Link
+                  href="/settings"
+                  className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
+                >
+                  <p className="font-semibold text-white">3. Keep the 7am briefing on</p>
+                  <p className="mt-1 text-zinc-500">That is the habit loop. Reliable delivery matters more than dashboard complexity.</p>
+                </Link>
+              </div>
+            </SectionCard>
+          )}
+
           <SectionCard
             title="Morning Brief"
             subtitle={`Daily briefing at ${preferences.digestHour}:00 ${preferences.timezone}${preferences.emailDigestEnabled ? " via email" : ""}`}

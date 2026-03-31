@@ -15,6 +15,7 @@ http://localhost:3000/api
 ### `POST /api/auth/signup`
 
 Create a Supabase Auth user plus the matching local GeoPulse profile row.
+This route is rate-limited by IP and normalized email address.
 
 Body:
 
@@ -36,9 +37,16 @@ Response:
 }
 ```
 
+Notes:
+
+- Billing plan state is server-controlled; client signup and preference payloads cannot grant premium access
+- Public self-service signup is intentionally rate-limited because the route uses the Supabase service role on the server
+- The public signup form also supports honeypot checks and requires Turnstile in production
+
 ### `POST /api/auth/migrate-legacy`
 
 Bridge an old local-password account into Supabase Auth on first sign-in.
+This route is rate-limited by IP and normalized email address.
 
 Body:
 
@@ -62,6 +70,7 @@ Response:
 ### `GET /api/events`
 
 Server-side filtered event feed with cursor pagination.
+This anonymous preview route is cached and rate-limited.
 
 Supported query params:
 
@@ -89,6 +98,7 @@ Response shape:
       "id": "clx...",
       "title": "OPEC signals a production cut",
       "category": "energy",
+      "intelligenceQuality": 0.82,
       "whyThisMatters": "Energy supply risk tends to move oil-linked assets quickly.",
       "supportingSourcesCount": 3,
       "correlations": [
@@ -113,6 +123,7 @@ Response shape:
 ### `GET /api/events/[id]`
 
 Fetch a single event plus trust metadata and related duplicate coverage.
+This anonymous preview route is cached and rate-limited.
 
 Response shape:
 
@@ -121,6 +132,7 @@ Response shape:
   "event": {
     "id": "clx...",
     "title": "Headline",
+    "intelligenceQuality": 0.81,
     "supportingSourcesCount": 4,
     "sourceReliability": 0.85
   },
@@ -143,12 +155,15 @@ Response shape:
 
 Read learned patterns. Optional query params:
 
+This anonymous preview route is cached and rate-limited.
+
 - `category`
 - `symbol`
 
 ### `GET /api/patterns/predict`
 
 Predict likely market reactions for a specific event.
+This anonymous preview route is cached and rate-limited.
 
 Required query param:
 
@@ -157,12 +172,14 @@ Required query param:
 ### `GET /api/stocks/[symbol]`
 
 Fetch correlations and learned patterns for one symbol.
+This anonymous preview route is cached and rate-limited.
 
 ## Market Data
 
 ### `GET /api/markets/quotes`
 
 Fetch quotes through the market provider abstraction.
+This anonymous preview route is cached and rate-limited.
 
 Required query param:
 
@@ -190,7 +207,7 @@ Response shape:
 }
 ```
 
-If the provider is unavailable, the endpoint falls back to the latest stored `MarketSnapshot` records.
+If the provider is unavailable, the endpoint falls back to the latest stored `MarketSnapshot` records. GeoPulse no longer uses the old scraper fallback in this route.
 
 ## Preferences and Personalization
 
@@ -211,6 +228,8 @@ Response includes:
 - `plan`
 - `onboarded`
 
+`plan` is read-only in this API. GeoPulse derives it from the server-side subscription record instead of trusting client input.
+
 ### `POST /api/preferences`
 
 Create or initialize the authenticated user's preferences.
@@ -230,10 +249,13 @@ Example body:
   "digestHour": 7,
   "emailDigestEnabled": true,
   "deliveryChannels": ["email"],
-  "savedViewsEnabled": true,
-  "plan": "free"
+  "savedViewsEnabled": true
 }
 ```
+
+Ignored fields:
+
+- `plan`
 
 ### `GET /api/me/entitlements`
 
@@ -373,6 +395,7 @@ Stripe webhook endpoint. Requires a valid `Stripe-Signature` header and `STRIPE_
 ### `GET /api/status`
 
 Read system health and aggregate counts.
+This anonymous preview route is cached and rate-limited.
 
 Response includes:
 
@@ -388,7 +411,7 @@ Response includes:
 
 Trigger ingestion manually. Requires an authenticated admin user.
 
-### `POST /api/cron/ingest`
+### `GET` or `POST /api/cron/ingest`
 
 Protected cron entrypoint for ingestion.
 
@@ -398,7 +421,7 @@ Authorization:
 Authorization: Bearer <CRON_SECRET>
 ```
 
-### `POST /api/cron/digests`
+### `GET` or `POST /api/cron/digests`
 
 Protected cron entrypoint for scheduled morning-brief processing.
 

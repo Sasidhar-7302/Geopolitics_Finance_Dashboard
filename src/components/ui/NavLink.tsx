@@ -36,13 +36,24 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-export default function NavLink({ href, label, icon }: { href: string; label: string; icon?: string }) {
+export default function NavLink({
+  href,
+  label,
+  icon,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  icon?: string;
+  onClick?: () => void;
+}) {
   const router = useRouter();
   const isActive = router.pathname === href;
 
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={clsx(
         "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition",
         isActive

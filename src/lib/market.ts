@@ -1,6 +1,5 @@
 import { prisma } from "./prisma";
 import { getAssetMeta } from "./assets";
-import { fetchQuotes as fetchGoogleFallbackQuotes } from "./sources/yahoo";
 
 export type MarketQuote = {
   symbol: string;
@@ -138,27 +137,6 @@ export async function fetchMarketQuotes(symbols: string[]): Promise<{
       mergedQuotes.set(symbol, quote);
     }
     await persistSnapshots(providerQuotes);
-  }
-
-  const fallbackTargets = getMissingSymbols(normalized, mergedQuotes);
-  if (fallbackTargets.length > 0) {
-    const fallbackQuotes = await fetchGoogleFallbackQuotes(fallbackTargets);
-    const normalizedFallback = fallbackQuotes.map((quote) => ({
-      ...quote,
-      provider: "google-finance-fallback",
-      freshness: "delayed" as const,
-      timestamp: new Date().toISOString(),
-    }));
-
-    if (normalizedFallback.some((quote) => quote.price > 0)) {
-      if (primaryProvider === "snapshot-cache") {
-        primaryProvider = "google-finance-fallback";
-      }
-      for (const [symbol, quote] of validQuoteMap(normalizedFallback)) {
-        mergedQuotes.set(symbol, quote);
-      }
-      await persistSnapshots(normalizedFallback);
-    }
   }
 
   const snapshotTargets = getMissingSymbols(normalized, mergedQuotes);
