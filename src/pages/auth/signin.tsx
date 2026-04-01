@@ -52,8 +52,8 @@ export default function SignIn() {
 
   return (
     <PublicLayout>
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center">
-        <div className="surface-card p-8">
+      <div className="mx-auto flex w-full min-w-0 max-w-md flex-1 flex-col justify-center">
+        <div className="surface-card p-6 sm:p-8">
           <p className="text-[10px] uppercase tracking-widest text-slate">Welcome back</p>
           <h1 className="mt-3 text-2xl font-bold text-ink">Sign in to GeoPulse</h1>
           <p className="mt-2 text-sm text-slate">Access your intelligence dashboard.</p>
