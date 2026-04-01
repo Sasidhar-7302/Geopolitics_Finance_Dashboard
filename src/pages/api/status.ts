@@ -2,36 +2,10 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
 import { startScheduler } from "../../lib/ingest/scheduler";
 import { applyPublicReadGuard, sendPublicApiError } from "../../lib/publicApi";
-import { ingestEvents } from "../../lib/ingest/events";
 
 // Vercel uses vercel.json cron jobs. Keep the in-process scheduler for self-hosted runtimes only.
 if (process.env.VERCEL !== "1") {
   startScheduler();
-}
-
-const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-
-/** Fire-and-forget: trigger ingestion if the last sync is stale (>2 hours). */
-async function maybeAutoSync() {
-  try {
-    const lastLog = await prisma.ingestionLog.findFirst({
-      orderBy: { startedAt: "desc" },
-      select: { completedAt: true, status: true },
-    });
-
-    // If there's a running ingestion, skip
-    if (lastLog?.status === "running") return;
-
-    const lastCompletedAt = lastLog?.completedAt?.getTime() ?? 0;
-    if (Date.now() - lastCompletedAt > AUTO_SYNC_INTERVAL_MS) {
-      // Fire and forget — don't await so the status response returns immediately
-      ingestEvents().catch(() => {
-        /* swallow errors; the ingestion log table records failures */
-      });
-    }
-  } catch {
-    /* best-effort */
-  }
 }
 
 function normalizeLastJob(
@@ -109,9 +83,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ) {
     return;
   }
-
-  // Kick off auto-sync in the background (fire-and-forget) if data is stale
-  maybeAutoSync();
 
   try {
     const [lastLog, lastCompletedLog, rawLastJob, eventCount, correlationCount, patternCount, recentEvents, degradedSources] = await Promise.all([
