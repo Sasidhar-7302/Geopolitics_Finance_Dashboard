@@ -47,7 +47,7 @@ export async function analyzeEventSentiments() {
   const events = await prisma.event.findMany({
     where: { sentimentScore: null },
     select: { id: true, title: true, summary: true },
-    take: 200,
+    take: 50,
   });
 
   if (events.length === 0) return { analyzed: 0 };
@@ -67,19 +67,14 @@ export async function analyzeEventSentiments() {
     }
   }
 
-  for (let index = 0; index < updates.length; index += 50) {
-    const chunk = updates.slice(index, index + 50);
-    await prisma.$transaction(
-      chunk.map((update) =>
-        prisma.event.update({
-          where: { id: update.id },
-          data: {
-            sentimentScore: update.score,
-            sentimentLabel: update.label,
-          },
-        })
-      )
-    );
+  for (const update of updates) {
+    await prisma.event.update({
+      where: { id: update.id },
+      data: {
+        sentimentScore: update.score,
+        sentimentLabel: update.label,
+      },
+    });
   }
 
   console.log(`[Sentiment] Analyzed ${updates.length} events`);
