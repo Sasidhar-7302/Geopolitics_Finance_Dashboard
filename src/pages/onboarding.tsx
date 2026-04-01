@@ -70,7 +70,8 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [trialEnd, setTrialEnd] = useState<Date | null>(null);
-  const [userCount, setUserCount] = useState(0);
+  const [lifetimeAccess, setLifetimeAccess] = useState(false);
+  const [onTrial, setOnTrial] = useState(false);
 
   useEffect(() => {
     // Fetch user's subscription info to get trial end date and user count
@@ -81,9 +82,8 @@ export default function Onboarding() {
         if (data.trialEnd) {
           setTrialEnd(new Date(data.trialEnd));
         }
-        if (data.registeredUsers !== undefined) {
-          setUserCount(data.registeredUsers);
-        }
+        setLifetimeAccess(Boolean(data.lifetimeAccess));
+        setOnTrial(Boolean(data.onTrial));
       } catch (error) {
         console.error("Failed to fetch trial info:", error);
       }
@@ -112,8 +112,8 @@ export default function Onboarding() {
         }),
       });
 
-      // Show premium modal before redirecting if user has trial
-      if (trialEnd && userCount > 10) {
+      // Show the welcome modal when the account is on trial or has lifetime access.
+      if (lifetimeAccess || onTrial) {
         setShowPremiumModal(true);
       } else {
         router.push("/dashboard");
@@ -318,10 +318,10 @@ export default function Onboarding() {
       </div>
     </div>
       {/* Premium Offer Modal */}
-      {showPremiumModal && trialEnd && (
+      {showPremiumModal && (
         <PremiumOfferModal
           trialEndDate={trialEnd}
-          userCount={userCount}
+          lifetimeAccess={lifetimeAccess}
           onSkip={() => router.push("/dashboard")}
         />
       )}

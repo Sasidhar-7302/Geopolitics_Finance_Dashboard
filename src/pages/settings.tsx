@@ -110,6 +110,10 @@ export default function Settings() {
   };
 
   const handleCheckout = async (interval: "monthly" | "yearly") => {
+    if (entitlements?.premiumActive && !entitlements?.onTrial) {
+      return;
+    }
+
     setBillingStatus("loading");
     try {
       const res = await fetch("/api/billing/checkout", {
@@ -126,6 +130,10 @@ export default function Settings() {
   };
 
   const handlePortal = async () => {
+    if (!entitlements?.canManageBilling) {
+      return;
+    }
+
     setBillingStatus("loading");
     try {
       const res = await fetch("/api/billing/portal", { method: "POST" });
@@ -325,34 +333,88 @@ export default function Settings() {
                     : "Closed"}
                 </span>
               </div>
-              <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-4">
-                <p className="text-sm font-semibold text-white">Premium roadmap</p>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  Premium is priced at $8/month or $79/year. Every new account starts with a 7-day premium trial, and the first 10 users keep premium for life.
-                </p>
-                {entitlements?.billingEnabled ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button onClick={() => handleCheckout("monthly")} className="btn-primary">
-                      {billingStatus === "loading" ? "Loading..." : "Start monthly checkout"}
-                    </button>
-                    <button onClick={() => handleCheckout("yearly")} className="ghost-chip hover:bg-white/[0.06]">
-                      Yearly checkout
-                    </button>
-                    <button onClick={handlePortal} className="ghost-chip hover:bg-white/[0.06]">
-                      Billing portal
-                    </button>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-[11px] text-zinc-600">
-                    Premium checkout will be available once billing is enabled.
+              {entitlements?.lifetimeAccess ? (
+                <div className="rounded-xl border border-emerald/20 bg-emerald/5 p-4">
+                  <p className="text-sm font-semibold text-white">Founding lifetime premium</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    This account already has lifetime premium access. Billing is not required, and checkout is disabled for this account.
                   </p>
-                )}
-                {billingStatus === "error" && entitlements?.billingEnabled && (
-                  <p className="mt-2 text-[11px] text-red-400">
-                    Something went wrong starting checkout. Please try again.
+                </div>
+              ) : entitlements?.onTrial ? (
+                <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-4">
+                  <p className="text-sm font-semibold text-white">Premium trial</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    You are currently on a premium trial{typeof entitlements?.trialDaysRemaining === "number" ? ` with ${entitlements.trialDaysRemaining} day${entitlements.trialDaysRemaining === 1 ? "" : "s"} remaining` : ""}. Upgrade any time to keep premium active after the trial ends.
                   </p>
-                )}
-              </div>
+                  {entitlements?.billingEnabled ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button onClick={() => handleCheckout("monthly")} className="btn-primary">
+                        {billingStatus === "loading" ? "Loading..." : "Start monthly checkout"}
+                      </button>
+                      <button onClick={() => handleCheckout("yearly")} className="ghost-chip hover:bg-white/[0.06]">
+                        Yearly checkout
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-[11px] text-zinc-600">
+                      Premium checkout will be available once billing is enabled.
+                    </p>
+                  )}
+                  {billingStatus === "error" && entitlements?.billingEnabled && (
+                    <p className="mt-2 text-[11px] text-red-400">
+                      Something went wrong starting checkout. Please try again.
+                    </p>
+                  )}
+                </div>
+              ) : entitlements?.premiumActive ? (
+                <div className="rounded-xl border border-emerald/20 bg-emerald/5 p-4">
+                  <p className="text-sm font-semibold text-white">Premium is active</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    This account already has premium access.
+                    {entitlements?.canManageBilling
+                      ? " You can manage billing details in the customer portal."
+                      : " No upgrade action is required right now."}
+                  </p>
+                  {entitlements?.canManageBilling && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button onClick={handlePortal} className="ghost-chip hover:bg-white/[0.06]">
+                        Billing portal
+                      </button>
+                    </div>
+                  )}
+                  {billingStatus === "error" && entitlements?.canManageBilling && (
+                    <p className="mt-2 text-[11px] text-red-400">
+                      Something went wrong opening the billing portal. Please try again.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-4">
+                  <p className="text-sm font-semibold text-white">Premium roadmap</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Premium is priced at $8/month or $79/year. Every new account starts with a 7-day premium trial, and the first 10 users keep premium for life.
+                  </p>
+                  {entitlements?.billingEnabled ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button onClick={() => handleCheckout("monthly")} className="btn-primary">
+                        {billingStatus === "loading" ? "Loading..." : "Start monthly checkout"}
+                      </button>
+                      <button onClick={() => handleCheckout("yearly")} className="ghost-chip hover:bg-white/[0.06]">
+                        Yearly checkout
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-[11px] text-zinc-600">
+                      Premium checkout will be available once billing is enabled.
+                    </p>
+                  )}
+                  {billingStatus === "error" && entitlements?.billingEnabled && (
+                    <p className="mt-2 text-[11px] text-red-400">
+                      Something went wrong starting checkout. Please try again.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </SectionCard>
 

@@ -32,10 +32,14 @@ export async function getProductState(userId: string) {
 
   const betaUnlocked = userCount < FEATURE_LIMITS.betaUserThreshold;
   const foundingPremiumSpotsRemaining = Math.max(0, FEATURE_LIMITS.foundingPremiumUsers - userCount);
+  const lifetimeAccess =
+    subscription?.status === "lifetime" ||
+    subscription?.billingInterval === "lifetime" ||
+    subscription?.provider === "founding";
 
   // Determine plan: check if trial expired
   let plan = subscription?.plan || "free";
-  let premiumActive = plan === "premium" || plan === "lifetime";
+  let premiumActive = lifetimeAccess || plan === "premium" || plan === "lifetime";
   let onTrial = false;
   let trialDaysRemaining: number | null = null;
 
@@ -69,11 +73,20 @@ export async function getProductState(userId: string) {
 
   const accessLabel = onTrial
     ? "Premium trial"
+    : lifetimeAccess
+    ? "Lifetime premium"
     : premiumActive
     ? "Premium"
     : betaUnlocked
     ? "Free beta"
     : "Free";
+
+  const billingEnabled = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID_MONTHLY);
+  const canManageBilling =
+    billingEnabled &&
+    !lifetimeAccess &&
+    subscription?.provider === "stripe" &&
+    Boolean(subscription?.customerId);
 
   return {
     betaUnlocked,
@@ -82,11 +95,16 @@ export async function getProductState(userId: string) {
     registeredUsers: userCount,
     plan,
     premiumActive,
+    lifetimeAccess,
     onTrial,
     trialDaysRemaining,
     accessLabel,
-    billingEnabled: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID_MONTHLY),
-    upgradePreview: !premiumActive,
+    billingEnabled,
+    canManageBilling,
+    subscriptionStatus: subscription?.status ?? null,
+    billingInterval: subscription?.billingInterval ?? null,
+    subscriptionProvider: subscription?.provider ?? null,
+    upgradePreview: onTrial || !premiumActive,
   };
 }
 

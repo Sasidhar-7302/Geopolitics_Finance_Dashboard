@@ -1,22 +1,24 @@
 import { useState } from "react";
 
 interface PremiumOfferModalProps {
-  trialEndDate: Date;
-  userCount: number;
+  trialEndDate?: Date | null;
+  lifetimeAccess?: boolean;
   onSkip: () => void;
 }
 
 export default function PremiumOfferModal({
   trialEndDate,
-  userCount,
+  lifetimeAccess = false,
   onSkip,
 }: PremiumOfferModalProps) {
   const [upgrading, setUpgrading] = useState(false);
-  const daysRemaining = Math.max(
-    1,
-    Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  );
-  const isEarlyUser = userCount <= 10;
+  const daysRemaining = trialEndDate
+    ? Math.max(
+        1,
+        Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      )
+    : null;
+  const isLifetimePremium = lifetimeAccess;
 
   const handleUpgrade = async (interval: "monthly" | "yearly") => {
     setUpgrading(true);
@@ -42,12 +44,12 @@ export default function PremiumOfferModal({
       <div className="w-full max-w-md rounded-2xl border border-emerald/20 bg-gradient-to-b from-black to-black/80 p-8 shadow-2xl">
         <div className="mb-6">
           <h2 className="mb-2 text-2xl font-bold text-white">
-            {isEarlyUser ? "Welcome to Premium" : "Your Premium Trial Is Live"}
+            {isLifetimePremium ? "Welcome to Premium" : "Your Premium Trial Is Live"}
           </h2>
           <p className="text-sm text-zinc-400">
-            {isEarlyUser
+            {isLifetimePremium
               ? "You are one of the first 10 users. Premium is unlocked for life."
-              : `You have ${daysRemaining} days of premium access left in your trial.`}
+              : `You have ${daysRemaining ?? 7} days of premium access left in your trial.`}
           </p>
         </div>
 
@@ -80,7 +82,7 @@ export default function PremiumOfferModal({
           ))}
         </div>
 
-        {!isEarlyUser && (
+        {!isLifetimePremium && (
           <div className="mb-8 space-y-3">
             <button
               onClick={() => handleUpgrade("monthly")}
@@ -104,10 +106,10 @@ export default function PremiumOfferModal({
           disabled={upgrading}
           className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-sm text-zinc-400 transition hover:bg-white/[0.06] disabled:opacity-50"
         >
-          {isEarlyUser ? "Continue to dashboard" : "Skip for now"}
+          {isLifetimePremium ? "Continue to dashboard" : "Skip for now"}
         </button>
 
-        {!isEarlyUser && (
+        {!isLifetimePremium && trialEndDate && (
           <p className="mt-4 text-center text-xs text-zinc-500">
             Your 7-day trial ends on{" "}
             <strong>{trialEndDate.toLocaleDateString()}</strong>.
