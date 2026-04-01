@@ -302,7 +302,7 @@ export default function Settings() {
               <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                 <span className="text-sm text-zinc-500">Current plan</span>
                 <span className="text-sm font-semibold text-white">
-                  {entitlements?.premiumActive ? "Premium" : entitlements?.betaUnlocked ? "Free beta" : "Free"}
+                  {entitlements?.accessLabel || "Free"}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
@@ -318,17 +318,17 @@ export default function Settings() {
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <span className="text-sm text-zinc-500">Founding beta</span>
+                <span className="text-sm text-zinc-500">Founding premium</span>
                 <span className="text-sm font-semibold text-white">
-                  {entitlements?.betaSpotsRemaining && entitlements.betaSpotsRemaining > 0
-                    ? `${entitlements.betaSpotsRemaining} spots remaining`
+                  {typeof entitlements?.foundingPremiumSpotsRemaining === "number" && entitlements.foundingPremiumSpotsRemaining > 0
+                    ? `${entitlements.foundingPremiumSpotsRemaining} of 10 spots remaining`
                     : "Closed"}
                 </span>
               </div>
               <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-4">
                 <p className="text-sm font-semibold text-white">Premium roadmap</p>
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  Premium is priced at $8/month or $79/year. The public site stays previewable without an account, while free accounts keep the full core workflow.
+                  Premium is priced at $8/month or $79/year. Every new account starts with a 7-day premium trial, and the first 10 users keep premium for life.
                 </p>
                 {entitlements?.billingEnabled ? (
                   <div className="mt-3 flex flex-wrap gap-2">

@@ -1,9 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createLocalUser } from "../../../lib/auth";
+import { FEATURE_LIMITS, ensureDefaultEntitlements } from "../../../lib/entitlements";
 import { enforceRateLimit, getRequestIp } from "../../../lib/rateLimit";
 import { getSupabaseAdminClient } from "../../../lib/supabase-admin";
 import { verifyTurnstileToken } from "../../../lib/turnstile";
 import { prisma } from "../../../lib/prisma";
+import { bootstrapUserProductState } from "../../../lib/userBootstrap";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -117,46 +118,83 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      // Get current user count to check if this is one of the first 10 users
-      const userCount = await prisma.user.count();
-      const isFirstTenUser = userCount < 10;
+      const initialTimezone =
+        typeof req.body?.timezone === "string" && req.body.timezone.trim().length > 0
+          ? req.body.timezone.trim()
+          : "UTC";
+      const initialDigestHour =
+        typeof req.body?.digestHour === "number" && req.body.digestHour >= 0 && req.body.digestHour <= 23
+          ? req.body.digestHour
+          : 7;
 
-      const user = await createLocalUser({
-        name: trimmedName,
-        email: normalizedEmail,
-        supabaseAuthId: data.user.id,
+      const { user, isFoundingUser, trialEndDate } = await prisma.$transaction(async (tx) => {
+        const userCount = await tx.user.count();
+        const isFirstTenUser = userCount < FEATURE_LIMITS.foundingPremiumUsers;
+
+        const existing = await tx.user.findUnique({ where: { email: normalizedEmail } });
+        if (existing) {
+          throw new Error("Email already registered");
+        }
+
+        const user = await tx.user.create({
+          data: {
+            name: trimmedName,
+            email: normalizedEmail,
+            supabaseAuthId: data.user.id,
+          },
+        });
+
+        const trialEndDate = new Date();
+        trialEndDate.setDate(trialEndDate.getDate() + FEATURE_LIMITS.premiumTrialDays);
+
+        await tx.subscription.create({
+          data: isFirstTenUser
+            ? {
+                userId: user.id,
+                provider: "founding",
+                status: "lifetime",
+                plan: "premium",
+                billingInterval: "lifetime",
+                currentPeriodEnd: null,
+                trialEnd: null,
+                cancelAtPeriodEnd: false,
+              }
+            : {
+                userId: user.id,
+                provider: "trial",
+                status: "trialing",
+                plan: "premium",
+                billingInterval: "monthly",
+                trialEnd: trialEndDate,
+                cancelAtPeriodEnd: false,
+              },
+        });
+
+        return {
+          user,
+          isFoundingUser: isFirstTenUser,
+          trialEndDate,
+        };
+      }, {
+        isolationLevel: "Serializable",
       });
 
-      // Create subscription with trial or lifetime premium
-      const trialEndDate = new Date();
-      trialEndDate.setDate(trialEndDate.getDate() + 7); // 7 days from now
+      await bootstrapUserProductState(user.id, {
+        timezone: initialTimezone,
+        digestHour: initialDigestHour,
+        deliveryChannels: ["email"],
+      });
+      await ensureDefaultEntitlements(user.id);
 
-      if (isFirstTenUser) {
-        // First 10 users get lifetime premium
-        await prisma.subscription.create({
-          data: {
-            userId: user.id,
-            provider: "manual",
-            status: "lifetime",
-            plan: "premium",
-            billingInterval: "lifetime",
-            currentPeriodEnd: null,
-            trialEnd: null,
-            cancelAtPeriodEnd: false,
-          },
-        });
-      } else {
-        // Everyone else gets 7-day free trial
-        await prisma.subscription.create({
-          data: {
-            userId: user.id,
-            status: "trialing",
-            plan: "free",
-            billingInterval: "monthly",
-            trialEnd: trialEndDate,
-          },
-        });
-      }
+      await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+        user_metadata: {
+          name: trimmedName,
+          accessGrant: isFoundingUser ? "founding" : "trial",
+          lifetimePremium: isFoundingUser,
+          plan: isFoundingUser ? "premium" : undefined,
+          trialEndsAt: isFoundingUser ? undefined : trialEndDate.toISOString(),
+        },
+      });
     } catch (error) {
       await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => undefined);
       throw error;

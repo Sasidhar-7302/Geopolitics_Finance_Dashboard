@@ -1,3 +1,4 @@
+import { FEATURE_LIMITS } from "./entitlements";
 import { prisma } from "./prisma";
 import { getAssetMeta } from "./assets";
 import { summarizeEventIntelligence } from "./intelligence";
@@ -232,7 +233,7 @@ export async function getPublicPreviewData(): Promise<PublicPreviewData> {
       totalCorrelations,
       degradedSources,
       registeredUsers,
-      foundingSpotsRemaining: Math.max(0, 1000 - registeredUsers),
+      foundingSpotsRemaining: Math.max(0, FEATURE_LIMITS.foundingPremiumUsers - registeredUsers),
     },
     previewStories: visiblePreviewStories,
     hotspots,

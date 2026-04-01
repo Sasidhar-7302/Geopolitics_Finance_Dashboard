@@ -112,7 +112,9 @@ export default function SignUp() {
         <div className="surface-card p-8">
           <p className="text-[10px] uppercase tracking-widest text-slate">Get started</p>
           <h1 className="mt-3 text-2xl font-bold text-ink">Create your account</h1>
-          <p className="mt-2 text-sm text-slate">Build your personalized intelligence feed.</p>
+          <p className="mt-2 text-sm text-slate">
+            Start with a free account. The first 10 users get lifetime premium, and every new signup gets a 7-day premium trial.
+          </p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <InputField
@@ -179,7 +181,7 @@ export default function SignUp() {
           </form>
 
           <p className="mt-3 text-[11px] leading-5 text-zinc-500">
-            GeoPulse uses lightweight abuse checks on signup and requires Turnstile verification for production signups.
+            GeoPulse uses lightweight abuse checks on signup, requires Turnstile verification for production signups, and starts every new account with premium access for the first week.
           </p>
 
           <p className="mt-6 text-center text-xs text-slate">

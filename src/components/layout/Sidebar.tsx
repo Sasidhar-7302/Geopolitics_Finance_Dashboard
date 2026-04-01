@@ -58,7 +58,7 @@ export default function Sidebar({ onNavigate, onClose }: { onNavigate?: () => vo
         </div>
         <p className="text-zinc-600">{status?.stats?.totalEvents ?? 0} events | {status?.stats?.totalCorrelations ?? 0} links</p>
         <p className="mt-1 text-zinc-600">
-          {entitlements?.premiumActive ? "Premium plan" : entitlements?.betaUnlocked ? "Free beta plan" : "Free plan"} | {status?.stats?.degradedSources ?? 0} degraded sources
+          {(entitlements?.accessLabel || "Free")} plan | {status?.stats?.degradedSources ?? 0} degraded sources
         </p>
       </div>
     </aside>

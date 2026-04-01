@@ -7,6 +7,8 @@ export const FEATURE_LIMITS = {
   freeDigestStories: 5,
   premiumMonthlyPrice: 8,
   premiumYearlyPrice: 79,
+  foundingPremiumUsers: 10,
+  premiumTrialDays: 7,
   betaUserThreshold: 1000,
 } as const;
 
@@ -29,19 +31,26 @@ export async function getProductState(userId: string) {
   ]);
 
   const betaUnlocked = userCount < FEATURE_LIMITS.betaUserThreshold;
+  const foundingPremiumSpotsRemaining = Math.max(0, FEATURE_LIMITS.foundingPremiumUsers - userCount);
 
   // Determine plan: check if trial expired
   let plan = subscription?.plan || "free";
   let premiumActive = plan === "premium" || plan === "lifetime";
   let onTrial = false;
+  let trialDaysRemaining: number | null = null;
 
   // Check if user has an active trial
   if (subscription?.status === "trialing" && subscription?.trialEnd) {
     const now = new Date();
     if (now < subscription.trialEnd) {
       // Trial is still active, grant premium benefits
+      plan = "premium";
       onTrial = true;
       premiumActive = true;
+      trialDaysRemaining = Math.max(
+        1,
+        Math.ceil((subscription.trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      );
     } else {
       // Trial has expired, convert to free
       plan = "free";
@@ -49,18 +58,33 @@ export async function getProductState(userId: string) {
       // Update subscription status
       await prisma.subscription.update({
         where: { userId },
-        data: { status: "free" },
+        data: {
+          status: "free",
+          plan: "free",
+          trialEnd: null,
+        },
       });
     }
   }
 
+  const accessLabel = onTrial
+    ? "Premium trial"
+    : premiumActive
+    ? "Premium"
+    : betaUnlocked
+    ? "Free beta"
+    : "Free";
+
   return {
     betaUnlocked,
     betaSpotsRemaining: Math.max(0, FEATURE_LIMITS.betaUserThreshold - userCount),
+    foundingPremiumSpotsRemaining,
     registeredUsers: userCount,
     plan,
     premiumActive,
     onTrial,
+    trialDaysRemaining,
+    accessLabel,
     billingEnabled: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID_MONTHLY),
     upgradePreview: !premiumActive,
   };
@@ -69,7 +93,7 @@ export async function getProductState(userId: string) {
 export async function ensureDefaultEntitlements(userId: string) {
   const state = await getProductState(userId);
   const baseAccessKeys = new Set<EntitlementKey>(["saved_views", "email_digest"]);
-  const source = state.premiumActive ? state.plan : state.betaUnlocked ? "beta" : "free";
+  const source = state.onTrial ? "trial" : state.premiumActive ? state.plan : state.betaUnlocked ? "beta" : "free";
 
   await prisma.entitlement.createMany({
     data: ENTITLEMENT_KEYS.map((key) => ({

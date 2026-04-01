@@ -53,7 +53,7 @@ export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="chip">
-          {entitlements?.premiumActive ? "Premium" : entitlements?.betaUnlocked ? "Free beta" : "Free"}
+            {entitlements?.accessLabel || "Free"}
           </span>
           <span className="chip">
             <span className={`h-1.5 w-1.5 rounded-full ${

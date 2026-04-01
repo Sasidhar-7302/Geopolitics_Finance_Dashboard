@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Link from "next/link";
 
 interface PremiumOfferModalProps {
   trialEndDate: Date;
@@ -7,9 +6,16 @@ interface PremiumOfferModalProps {
   onSkip: () => void;
 }
 
-export default function PremiumOfferModal({ trialEndDate, userCount, onSkip }: PremiumOfferModalProps) {
+export default function PremiumOfferModal({
+  trialEndDate,
+  userCount,
+  onSkip,
+}: PremiumOfferModalProps) {
   const [upgrading, setUpgrading] = useState(false);
-  const daysRemaining = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(
+    1,
+    Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  );
   const isEarlyUser = userCount <= 10;
 
   const handleUpgrade = async (interval: "monthly" | "yearly") => {
@@ -23,97 +29,91 @@ export default function PremiumOfferModal({ trialEndDate, userCount, onSkip }: P
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
+        return;
       }
     } catch (error) {
       console.error("Failed to start checkout:", error);
-      setUpgrading(false);
     }
+    setUpgrading(false);
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50 p-4">
-      <div className="rounded-2xl border border-emerald/20 bg-gradient-to-b from-black to-black/80 p-8 max-w-md w-full shadow-2xl">
-        {/* Header */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-emerald/20 bg-gradient-to-b from-black to-black/80 p-8 shadow-2xl">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-white mb-2">
-            {isEarlyUser ? "Welcome to Premium! 🎉" : "Unlock Premium Intelligence 🚀"}
+          <h2 className="mb-2 text-2xl font-bold text-white">
+            {isEarlyUser ? "Welcome to Premium" : "Your Premium Trial Is Live"}
           </h2>
           <p className="text-sm text-zinc-400">
             {isEarlyUser
-              ? "You're one of the first users. Enjoy lifetime premium access!"
-              : `You have ${daysRemaining} days of free access. Upgrade anytime.`}
+              ? "You are one of the first 10 users. Premium is unlocked for life."
+              : `You have ${daysRemaining} days of premium access left in your trial.`}
           </p>
         </div>
 
-        {/* Features */}
-        <div className="space-y-3 mb-8">
-          <div className="flex gap-3">
-            <span className="text-emerald text-lg">✓</span>
-            <div>
-              <p className="text-white font-semibold text-sm">Unlimited alerts & watchlists</p>
-              <p className="text-zinc-500 text-xs">Never miss critical market moves</p>
+        <div className="mb-8 space-y-3">
+          {[
+            {
+              title: "Unlimited alerts and watchlists",
+              detail: "Never miss critical market moves.",
+            },
+            {
+              title: "Premium insights",
+              detail: "Deeper analysis of geopolitical market impact.",
+            },
+            {
+              title: "Faster market refresh",
+              detail: "Higher-frequency quote and signal updates.",
+            },
+            {
+              title: "Intraday digests",
+              detail: "Extra briefings beyond the morning report.",
+            },
+          ].map((feature) => (
+            <div key={feature.title} className="flex gap-3">
+              <span className="text-sm font-bold text-emerald">OK</span>
+              <div>
+                <p className="text-sm font-semibold text-white">{feature.title}</p>
+                <p className="text-xs text-zinc-500">{feature.detail}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-emerald text-lg">✓</span>
-            <div>
-              <p className="text-white font-semibold text-sm">Premium insights</p>
-              <p className="text-zinc-500 text-xs">Deep analysis of geopolitical impact</p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-emerald text-lg">✓</span>
-            <div>
-              <p className="text-white font-semibold text-sm">Faster market refresh</p>
-              <p className="text-zinc-500 text-xs">Real-time data without delays</p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-emerald text-lg">✓</span>
-            <div>
-              <p className="text-white font-semibold text-sm">Intraday digests</p>
-              <p className="text-zinc-500 text-xs">Stay updated throughout the day</p>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Pricing */}
         {!isEarlyUser && (
-          <div className="space-y-3 mb-8">
+          <div className="mb-8 space-y-3">
             <button
               onClick={() => handleUpgrade("monthly")}
               disabled={upgrading}
               className="w-full rounded-lg bg-emerald px-4 py-3 font-semibold text-black transition hover:bg-emerald/90 disabled:opacity-50"
             >
-              {upgrading ? "Opening checkout..." : "Upgrade Now — $8/month"}
+              {upgrading ? "Opening checkout..." : "Upgrade Now - $8/month"}
             </button>
             <button
               onClick={() => handleUpgrade("yearly")}
               disabled={upgrading}
               className="w-full rounded-lg border border-emerald/30 bg-emerald/5 px-4 py-3 font-semibold text-emerald transition hover:bg-emerald/10 disabled:opacity-50"
             >
-              {upgrading ? "Opening checkout..." : "Best Value — $79/year"}
+              {upgrading ? "Opening checkout..." : "Best Value - $79/year"}
             </button>
           </div>
         )}
 
-        {/* Skip/Close Button */}
         <button
           onClick={onSkip}
           disabled={upgrading}
           className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-sm text-zinc-400 transition hover:bg-white/[0.06] disabled:opacity-50"
         >
-          {isEarlyUser ? "Close" : "Skip for Now"}
+          {isEarlyUser ? "Continue to dashboard" : "Skip for now"}
         </button>
 
-        {/* Footer */}
         {!isEarlyUser && (
-          <p className="text-center text-xs text-zinc-500 mt-4">
-            Your 7-day trial ends <strong>{new Date(trialEndDate).toLocaleDateString()}</strong>
+          <p className="mt-4 text-center text-xs text-zinc-500">
+            Your 7-day trial ends on{" "}
+            <strong>{trialEndDate.toLocaleDateString()}</strong>.
           </p>
         )}
       </div>
     </div>
   );
 }
-

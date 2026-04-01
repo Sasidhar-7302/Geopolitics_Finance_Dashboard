@@ -40,11 +40,11 @@ const ACCESS_LADDER = [
   {
     name: "Free account",
     price: "$0",
-    description: "The full core workflow for serious evaluation before anyone pays.",
+    description: "The full core workflow for serious evaluation before anyone pays, plus a 7-day premium trial on signup.",
     features: [
       "Dashboard, digest, timeline, map, and event drill-downs",
       "1 watchlist, 3 alerts, 3 saved views",
-      "Daily digest with the top 5 stories",
+      "Daily digest with the top 5 stories after the trial window",
     ],
   },
   {
@@ -77,7 +77,7 @@ export default function Home({
                 Premium is reserved for deeper workflows, higher limits, and faster briefings.
               </p>
               <p className="max-w-2xl text-sm leading-6 text-zinc-500">
-                The preview now prioritizes stories with stronger confirmation, cleaner source mixes, and clearer market relevance instead of showing every headline that happened to mention risk.
+                The first 10 users keep premium for life, and every new signup starts with a 7-day premium trial before dropping to the free core workflow.
               </p>
             </div>
 
@@ -96,8 +96,8 @@ export default function Home({
             <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
               <span className="rounded-full border border-emerald/20 bg-emerald/10 px-3 py-1 text-emerald">
                 {preview.metrics.foundingSpotsRemaining > 0
-                  ? `${preview.metrics.foundingSpotsRemaining} founding beta spots remaining`
-                  : "Founding beta closed"}
+                  ? `${preview.metrics.foundingSpotsRemaining} of 10 lifetime premium spots remaining`
+                  : "Founding lifetime premium closed"}
               </span>
               <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1">
                 {preview.metrics.totalEvents.toLocaleString()} total events tracked
@@ -124,7 +124,7 @@ export default function Home({
             <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-400/5 p-4">
               <p className="text-sm font-semibold text-white">Current product flow</p>
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Anonymous users get a live glance. Free accounts get the core research workflow. Premium adds capacity, richer briefings, and faster signal delivery instead of taking away the basics.
+                Anonymous users get a live glance. New users get a premium trial. Free accounts keep the core research workflow. Premium adds capacity, richer briefings, and faster signal delivery instead of taking away the basics.
               </p>
             </div>
           </div>
@@ -257,7 +257,7 @@ export default function Home({
               <h2 className="mt-2 text-xl font-bold text-white">The preview is the sample, not the whole product</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-400">
                 <p>Free accounts unlock the dashboard, timeline, map, alerts, watchlists, and personalized morning brief.</p>
-                <p>Premium is where higher-capacity workflows live: more alerts, more saved views, deeper insights, and faster refresh when the paid layer is turned on.</p>
+                <p>Every signup starts with a 7-day premium trial, and the first 10 users keep premium for life.</p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link href="/auth/signup" className="btn-primary">

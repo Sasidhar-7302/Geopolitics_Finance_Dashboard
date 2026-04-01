@@ -706,7 +706,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
                 <span>Plan</span>
                 <span className="font-semibold text-white">
-                  {entitlements?.premiumActive ? "Premium" : entitlements?.betaUnlocked ? "Free Beta" : "Free"}
+                  {entitlements?.accessLabel || "Free"}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
@@ -722,15 +722,15 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                <span>Founding beta</span>
+                <span>Founding premium</span>
                 <span className="font-semibold text-white">
-                  {entitlements?.betaSpotsRemaining && entitlements.betaSpotsRemaining > 0
-                    ? `${entitlements.betaSpotsRemaining} spots left`
+                  {typeof entitlements?.foundingPremiumSpotsRemaining === "number" && entitlements.foundingPremiumSpotsRemaining > 0
+                    ? `${entitlements.foundingPremiumSpotsRemaining} of 10 spots left`
                     : "Closed"}
                 </span>
               </div>
               <p className="pt-1 text-[11px] text-zinc-600">
-                The anonymous homepage shows a live preview. Free accounts unlock the full dashboard. Premium is priced at $8/month or $79/year when billing is enabled.
+                The anonymous homepage shows a live preview. Every new account starts with a 7-day premium trial. The first 10 users keep premium for life.
               </p>
             </div>
           </SectionCard>
