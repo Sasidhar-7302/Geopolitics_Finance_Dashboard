@@ -106,7 +106,6 @@ Open `http://localhost:3000`.
 
 | Variable | Purpose |
 |---|---|
-| `ADMIN_EMAILS` | Comma-separated admin allowlist for manual sync and admin digest actions |
 | `NEWS_RSS_FEEDS` | Override feed list without editing `config/feeds.json` |
 | `GDELT_QUERY` | Custom GDELT query string |
 | `TWELVEDATA_API_KEY` | Preferred provider-backed quote source |
@@ -122,18 +121,21 @@ Open `http://localhost:3000`.
 - Anonymous users get a live preview on the homepage with top stories, hotspots, and delayed market snapshots
 - Free accounts get the full core workflow: dashboard, digest, timeline, map, event drill-downs, 1 watchlist, 3 alerts, 3 saved views, and 5 digest stories
 - Premium is positioned at `$8/month` or `$79/year` for unlimited alerts, unlimited watchlists and saved views, faster refresh, and deeper briefing workflows
-- The first `1,000` registered users are still treated as the founding beta cohort, but beta status no longer silently grants unlimited premium access to everyone
+- **First 10 registered users automatically get lifetime premium** — no payment required, unlimited access forever
+- **Users 11+ get 7-day free premium trial** — users see an upgrade prompt during onboarding after customizing their preferences
+- Trial automatically converts to free tier after 7 days unless user upgrades
 - Billing plan changes are server-controlled only. Client preference updates can read plan state, but they cannot grant premium access.
 
 ## Deployment Notes
 
-- Vercel Hobby-compatible cron is configured for once-daily ingestion in `vercel.json`
+- All data ingestion and digest processing is fully automatic via Vercel cron jobs configured in `vercel.json`
+- Ingestion runs every 2 hours and digest processing runs every hour automatically
+- No manual sync actions needed - all operations are background-only for seamless user experience
 - Cron entrypoints accept header-based bearer auth only; query-string secrets are intentionally rejected
-- Hourly timezone-aware digest processing is implemented in `/api/cron/digests`, and the handler now supports both `GET` and `POST` so it can work with Vercel cron if you enable it later
 - Public preview APIs are cache-backed and rate-limited through Postgres-backed distributed throttles to reduce scraping pressure and provider quota burn
-- Production signup now expects Turnstile to be configured before public beta traffic is opened
+- Production signup requires Cloudflare Turnstile verification to prevent bot abuse
 - Run `npx prisma migrate deploy` before the first production rollout
-- In production, set `ADMIN_EMAILS`. If you leave it unset, admin-only routes are intentionally denied
+- Premium features: First 10 users get lifetime premium, users 11+ get 7-day free trial automatically
 
 ## Launch Checks
 

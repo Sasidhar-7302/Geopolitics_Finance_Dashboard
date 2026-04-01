@@ -28,9 +28,16 @@ export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-base font-bold text-white">
-              GeoPulse <span className="text-gradient">Intelligence</span>
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold text-white">
+                GeoPulse <span className="text-gradient">Intelligence</span>
+              </h1>
+              {entitlements?.premiumActive && (
+                <span className="inline-flex items-center rounded-md bg-emerald/10 px-2 py-1 text-xs font-medium text-emerald">
+                  Premium
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-zinc-500">
               Geopolitical signals linked to market movements
             </p>
