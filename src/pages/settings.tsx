@@ -420,8 +420,8 @@ export default function Settings() {
                 </div>
                 <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Cron cadence</p>
-                  <p className="mt-2 text-sm font-semibold text-white">Every 2 hours on Vercel</p>
-                  <p className="mt-1 text-xs text-zinc-500">Daily digest remains on its separate morning schedule.</p>
+                  <p className="mt-2 text-sm font-semibold text-white">Daily cron on Vercel Hobby</p>
+                  <p className="mt-1 text-xs text-zinc-500">Fresh visits trigger on-demand stale-data sync. More frequent scheduled ingests require Vercel Pro or an external scheduler.</p>
                 </div>
                 <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Feed network</p>
