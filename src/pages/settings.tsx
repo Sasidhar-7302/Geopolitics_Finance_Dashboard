@@ -41,6 +41,30 @@ const POPULAR_SYMBOLS = [
   "ICLN", "URA", "BDRY", "BITO",
 ];
 
+function SelectionChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+        active
+          ? "border-cyan/30 bg-cyan/10 text-white"
+          : "border-white/[0.06] bg-black/40 text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function Settings() {
   const { status, mutate: mutateStatus } = useStatus();
   const { preferences, savePreferences, isLoading: prefsLoading } = usePreferences();
@@ -49,6 +73,7 @@ export default function Settings() {
 
   const [billingStatus, setBillingStatus] = useState<"idle" | "loading" | "error">("idle");
   const [digestStatus, setDigestStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [syncStatus, setSyncStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     categories: preferences.categories,
@@ -86,7 +111,7 @@ export default function Settings() {
   }), [form, preferences, prefsLoading]);
 
   const toggleItem = (list: string[], item: string) => (
-    list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
+    list.includes(item) ? list.filter((value) => value !== item) : [...list, item]
   );
 
   const handleSavePrefs = async () => {
@@ -110,11 +135,24 @@ export default function Settings() {
     setTimeout(() => setDigestStatus("idle"), 2500);
   };
 
-  const handleCheckout = async (interval: "monthly" | "yearly") => {
-    if (entitlements?.premiumActive && !entitlements?.onTrial) {
-      return;
+  const handleSyncNow = async () => {
+    setSyncStatus("running");
+    try {
+      const res = await fetch("/api/auto-sync", { method: "POST" });
+      if (!res.ok) throw new Error("Sync failed");
+      setSyncStatus("done");
+      setTimeout(() => {
+        mutateStatus();
+        setSyncStatus("idle");
+      }, 2000);
+    } catch {
+      setSyncStatus("error");
+      setTimeout(() => setSyncStatus("idle"), 2500);
     }
+  };
 
+  const handleCheckout = async (interval: "monthly" | "yearly") => {
+    if (entitlements?.premiumActive && !entitlements?.onTrial) return;
     setBillingStatus("loading");
     try {
       const res = await fetch("/api/billing/checkout", {
@@ -131,10 +169,7 @@ export default function Settings() {
   };
 
   const handlePortal = async () => {
-    if (!entitlements?.canManageBilling) {
-      return;
-    }
-
+    if (!entitlements?.canManageBilling) return;
     setBillingStatus("loading");
     try {
       const res = await fetch("/api/billing/portal", { method: "POST" });
@@ -149,320 +184,296 @@ export default function Settings() {
   return (
     <Layout>
       <div className="space-y-4">
-        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <SectionCard title="Interests" subtitle="Tune the dashboard and digest around what you actually follow.">
-            {prefsLoading ? (
-              <div className="h-40 animate-pulse rounded-xl bg-white/[0.03]" />
-            ) : (
-              <div className="space-y-5">
-                <div>
-                  <h3 className="mb-2 text-xs font-semibold text-zinc-400">Topics</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {TOPIC_OPTIONS.map(({ key, label }) => {
-                      const active = effectiveForm.categories.includes(key);
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => setForm((current) => ({
-                            ...current,
-                            categories: toggleItem(current.categories, key),
-                          }))}
-                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition ${
-                            active
-                              ? "border-emerald/30 bg-emerald/10 text-emerald"
-                              : "border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
+        <SectionCard title="Personalization" subtitle="Choose what stays closest to the top of the dashboard, map, and morning brief.">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="space-y-5">
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">Topics</p>
+                <div className="flex flex-wrap gap-2">
+                  {TOPIC_OPTIONS.map((option) => (
+                    <SelectionChip
+                      key={option.key}
+                      active={effectiveForm.categories.includes(option.key)}
+                      label={option.label}
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          categories: toggleItem(current.categories, option.key),
+                        }))
+                      }
+                    />
+                  ))}
                 </div>
-
-                <div>
-                  <h3 className="mb-2 text-xs font-semibold text-zinc-400">Regions</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {REGION_OPTIONS.map(({ key, label }) => {
-                      const active = effectiveForm.regions.includes(key);
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => setForm((current) => ({
-                            ...current,
-                            regions: toggleItem(current.regions, key),
-                          }))}
-                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition ${
-                            active
-                              ? "border-emerald/30 bg-emerald/10 text-emerald"
-                              : "border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="mb-2 text-xs font-semibold text-zinc-400">Stocks & ETFs</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {POPULAR_SYMBOLS.map((symbol) => {
-                      const active = effectiveForm.symbols.includes(symbol);
-                      return (
-                        <SymbolHoverCard key={symbol} symbol={symbol}>
-                          <button
-                            onClick={() => setForm((current) => ({
-                              ...current,
-                              symbols: toggleItem(current.symbols, symbol),
-                            }))}
-                            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
-                              active
-                                ? "border-emerald/30 bg-emerald/10 text-emerald"
-                                : "border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
-                            }`}
-                          >
-                            {symbol}
-                          </button>
-                        </SymbolHoverCard>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleSavePrefs}
-                  disabled={saving}
-                  className="btn-primary w-full disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Save Preferences"}
-                </button>
               </div>
-            )}
-          </SectionCard>
 
-          <SectionCard title="Morning Brief" subtitle="Build a daily habit with a 7am local-market briefing.">
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">Regions</p>
+                <div className="flex flex-wrap gap-2">
+                  {REGION_OPTIONS.map((option) => (
+                    <SelectionChip
+                      key={option.key}
+                      active={effectiveForm.regions.includes(option.key)}
+                      label={option.label}
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          regions: toggleItem(current.regions, option.key),
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">Symbols</p>
+                <div className="flex flex-wrap gap-2">
+                  {POPULAR_SYMBOLS.map((symbol) => (
+                    <SymbolHoverCard key={symbol} symbol={symbol}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            symbols: toggleItem(current.symbols, symbol),
+                          }))
+                        }
+                        className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                          effectiveForm.symbols.includes(symbol)
+                            ? "border-cyan/30 bg-cyan/10 text-white"
+                            : "border-white/[0.06] bg-black/40 text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+                        }`}
+                      >
+                        {symbol}
+                      </button>
+                    </SymbolHoverCard>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-zinc-400">Timezone</label>
-                <div className="flex gap-2">
-                  <input
-                    value={effectiveForm.timezone}
-                    onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
-                    className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-sm text-zinc-200"
-                  />
-                  <button
-                    onClick={() => setForm((current) => ({
-                      ...current,
-                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    }))}
-                    className="ghost-chip whitespace-nowrap hover:bg-white/[0.06]"
-                  >
-                    Use browser
-                  </button>
-                </div>
+              <div className="rounded-[24px] border border-white/[0.06] bg-black/55 p-4">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Current focus</p>
+                <p className="mt-3 text-sm font-semibold text-white">
+                  {effectiveForm.categories.length} topics / {effectiveForm.regions.length} regions / {effectiveForm.symbols.length} symbols
+                </p>
+                <p className="mt-2 text-sm leading-6 text-zinc-500">
+                  These selections steer ranking, digest ordering, and the most visible market links.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={handleSavePrefs}
+                disabled={saving}
+                className="btn-primary w-full disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save preferences"}
+              </button>
+            </div>
+          </div>
+        </SectionCard>
 
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-zinc-400">Digest hour</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={effectiveForm.digestHour}
-                  onChange={(event) => setForm((current) => ({ ...current, digestHour: Number(event.target.value) }))}
-                  className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-sm text-zinc-200"
-                />
-              </div>
-
-              <label className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-3">
-                <span>
-                  <span className="block text-sm font-medium text-white">Email delivery</span>
-                  <span className="text-[11px] text-zinc-500">Send the top stories at your scheduled time.</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={effectiveForm.emailDigestEnabled}
-                  onChange={(event) => setForm((current) => ({ ...current, emailDigestEnabled: event.target.checked }))}
-                />
-              </label>
-
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white">Daily digest preview</p>
-                    <p className="text-[11px] text-zinc-500">Creates a preview delivery using your current preferences.</p>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <SectionCard title="Morning Brief Delivery" subtitle="Control the daily briefing schedule and preview the current output.">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.16em] text-zinc-500">Timezone</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={effectiveForm.timezone}
+                      onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
+                      className="w-full rounded-xl border border-white/[0.08] bg-black/50 px-3 py-2 text-sm text-zinc-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                        }))
+                      }
+                      className="btn-secondary whitespace-nowrap"
+                    >
+                      Use browser
+                    </button>
                   </div>
-                  <button onClick={handleDigestPreview} className="ghost-chip hover:bg-white/[0.06]">
-                    {digestStatus === "sending" ? "Preparing..." : "Preview"}
-                  </button>
                 </div>
-                {digestStatus === "done" && <p className="mt-2 text-[11px] text-emerald">Preview digest recorded successfully.</p>}
-                {digestStatus === "error" && <p className="mt-2 text-[11px] text-red-400">Could not create digest preview.</p>}
+
+                <div>
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.16em] text-zinc-500">Digest hour</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={effectiveForm.digestHour}
+                    onChange={(event) => setForm((current) => ({ ...current, digestHour: Number(event.target.value) }))}
+                    className="w-full rounded-xl border border-white/[0.08] bg-black/50 px-3 py-2 text-sm text-zinc-200"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center justify-between rounded-[22px] border border-white/[0.06] bg-black/55 px-4 py-4">
+                  <span>
+                    <span className="block text-sm font-medium text-white">Email delivery</span>
+                    <span className="text-[11px] text-zinc-500">Send the top stories at your scheduled time.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={effectiveForm.emailDigestEnabled}
+                    onChange={(event) => setForm((current) => ({ ...current, emailDigestEnabled: event.target.checked }))}
+                  />
+                </label>
+
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-sm font-semibold text-white">Digest preview</p>
+                  <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                    Generates a preview using your current preferences so you can validate the briefing flow.
+                  </p>
+                  <button type="button" onClick={handleDigestPreview} className="btn-secondary mt-4">
+                    {digestStatus === "sending" ? "Preparing..." : "Preview digest"}
+                  </button>
+                  {digestStatus === "done" ? <p className="mt-3 text-[11px] text-emerald">Preview digest recorded successfully.</p> : null}
+                  {digestStatus === "error" ? <p className="mt-3 text-[11px] text-red-400">Could not create digest preview.</p> : null}
+                </div>
               </div>
             </div>
           </SectionCard>
-        </div>
 
-        <div className={`grid gap-4 ${isAdmin ? "lg:grid-cols-[1fr_1fr]" : ""}`}>
-          <SectionCard title="Product Access" subtitle="Free accounts get the full core workflow. Premium expands limits, speed, and briefing depth.">
+          <SectionCard title="Product Access" subtitle="Free stays usable. Premium expands capacity and persistence rather than locking the core workflow.">
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <span className="text-sm text-zinc-500">Current plan</span>
-                <span className="text-sm font-semibold text-white">
-                  {entitlements?.accessLabel || "Free"}
-                </span>
+              <div className="rounded-[22px] border border-white/[0.06] bg-black/55 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Current plan</p>
+                <p className="mt-2 text-sm font-semibold text-white">{entitlements?.accessLabel || "Free"}</p>
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <span className="text-sm text-zinc-500">Saved views</span>
-                <span className="text-sm font-semibold text-white">
+              <div className="rounded-[22px] border border-white/[0.06] bg-black/55 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Saved views</p>
+                <p className="mt-2 text-sm font-semibold text-white">
                   {entitlements?.limits?.savedViews === null ? "Unlimited" : `${entitlements?.limits?.savedViews ?? 3} on free`}
-                </span>
+                </p>
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <span className="text-sm text-zinc-500">Alerts</span>
-                <span className="text-sm font-semibold text-white">
+              <div className="rounded-[22px] border border-white/[0.06] bg-black/55 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Alerts</p>
+                <p className="mt-2 text-sm font-semibold text-white">
                   {entitlements?.limits?.alerts === null ? "Unlimited" : `${entitlements?.limits?.alerts ?? 3} on free`}
-                </span>
+                </p>
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <span className="text-sm text-zinc-500">Founding premium</span>
-                <span className="text-sm font-semibold text-white">
-                  {typeof entitlements?.foundingPremiumSpotsRemaining === "number" && entitlements.foundingPremiumSpotsRemaining > 0
-                    ? `${entitlements.foundingPremiumSpotsRemaining} of 10 spots remaining`
-                    : "Closed"}
-                </span>
-              </div>
+
               {entitlements?.lifetimeAccess ? (
-                <div className="rounded-xl border border-emerald/20 bg-emerald/5 p-4">
+                <div className="rounded-[22px] border border-emerald/20 bg-emerald/5 p-4">
                   <p className="text-sm font-semibold text-white">Founding lifetime premium</p>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    This account already has lifetime premium access. Billing is not required, and checkout is disabled for this account.
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                    This account already has lifetime premium access. Billing is not required.
                   </p>
-                </div>
-              ) : entitlements?.onTrial ? (
-                <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-4">
-                  <p className="text-sm font-semibold text-white">Premium trial</p>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    You are currently on a premium trial{typeof entitlements?.trialDaysRemaining === "number" ? ` with ${entitlements.trialDaysRemaining} day${entitlements.trialDaysRemaining === 1 ? "" : "s"} remaining` : ""}. Upgrade any time to keep premium active after the trial ends.
-                  </p>
-                  {entitlements?.billingEnabled ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button onClick={() => handleCheckout("monthly")} className="btn-primary">
-                        {billingStatus === "loading" ? "Loading..." : "Start monthly checkout"}
-                      </button>
-                      <button onClick={() => handleCheckout("yearly")} className="ghost-chip hover:bg-white/[0.06]">
-                        Yearly checkout
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-[11px] text-zinc-600">
-                      Premium checkout will be available once billing is enabled.
-                    </p>
-                  )}
-                  {billingStatus === "error" && entitlements?.billingEnabled && (
-                    <p className="mt-2 text-[11px] text-red-400">
-                      Something went wrong starting checkout. Please try again.
-                    </p>
-                  )}
                 </div>
               ) : entitlements?.premiumActive ? (
-                <div className="rounded-xl border border-emerald/20 bg-emerald/5 p-4">
+                <div className="rounded-[22px] border border-emerald/20 bg-emerald/5 p-4">
                   <p className="text-sm font-semibold text-white">Premium is active</p>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    This account already has premium access.
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-500">
                     {entitlements?.canManageBilling
-                      ? " You can manage billing details in the customer portal."
-                      : " No upgrade action is required right now."}
+                      ? "Open the billing portal to manage payment details."
+                      : "No upgrade action is required right now."}
                   </p>
-                  {entitlements?.canManageBilling && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button onClick={handlePortal} className="ghost-chip hover:bg-white/[0.06]">
-                        Billing portal
-                      </button>
-                    </div>
-                  )}
-                  {billingStatus === "error" && entitlements?.canManageBilling && (
-                    <p className="mt-2 text-[11px] text-red-400">
-                      Something went wrong opening the billing portal. Please try again.
-                    </p>
-                  )}
+                  {entitlements?.canManageBilling ? (
+                    <button type="button" onClick={handlePortal} className="btn-secondary mt-4">
+                      Billing portal
+                    </button>
+                  ) : null}
                 </div>
               ) : (
-                <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-4">
-                  <p className="text-sm font-semibold text-white">Premium roadmap</p>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    Premium is priced at $8/month or $79/year. Every new account starts with a 7-day premium trial, and the first 10 users keep premium for life.
+                <div className="rounded-[22px] border border-amber-400/15 bg-amber-400/5 p-4">
+                  <p className="text-sm font-semibold text-white">{entitlements?.onTrial ? "Premium trial" : "Premium roadmap"}</p>
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                    {entitlements?.onTrial
+                      ? `You are on a premium trial${typeof entitlements?.trialDaysRemaining === "number" ? ` with ${entitlements.trialDaysRemaining} day${entitlements.trialDaysRemaining === 1 ? "" : "s"} remaining` : ""}.`
+                      : "Premium is priced at $8/month or $79/year and is built for heavier daily use."}
                   </p>
                   {entitlements?.billingEnabled ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button onClick={() => handleCheckout("monthly")} className="btn-primary">
-                        {billingStatus === "loading" ? "Loading..." : "Start monthly checkout"}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => handleCheckout("monthly")} className="btn-primary">
+                        {billingStatus === "loading" ? "Loading..." : "Monthly checkout"}
                       </button>
-                      <button onClick={() => handleCheckout("yearly")} className="ghost-chip hover:bg-white/[0.06]">
+                      <button type="button" onClick={() => handleCheckout("yearly")} className="btn-secondary">
                         Yearly checkout
                       </button>
                     </div>
-                  ) : (
-                    <p className="mt-3 text-[11px] text-zinc-600">
-                      Premium checkout will be available once billing is enabled.
-                    </p>
-                  )}
-                  {billingStatus === "error" && entitlements?.billingEnabled && (
-                    <p className="mt-2 text-[11px] text-red-400">
-                      Something went wrong starting checkout. Please try again.
-                    </p>
-                  )}
+                  ) : null}
+                  {billingStatus === "error" ? <p className="mt-3 text-[11px] text-red-400">Billing action failed. Try again.</p> : null}
                 </div>
               )}
             </div>
           </SectionCard>
-
-          {isAdmin ? (
-            <SectionCard title="System Reliability" subtitle="Operational signals for ingestion, sources, and background jobs.">
-              <div className="space-y-2">
-                {[
-                  { label: "Last ingestion", value: status?.lastIngestion?.completedAt ? relativeTime(status.lastIngestion.completedAt) : "Never" },
-                  { label: "Pipeline status", value: status?.lastIngestion?.status ?? "idle" },
-                  { label: "Current stage", value: status?.lastJob?.stage ?? "n/a" },
-                  { label: "Total events", value: (status?.stats?.totalEvents ?? 0).toString() },
-                  { label: "Correlations", value: (status?.stats?.totalCorrelations ?? 0).toString() },
-                  { label: "Patterns", value: (status?.stats?.totalPatterns ?? 0).toString() },
-                  { label: "Degraded sources", value: (status?.stats?.degradedSources ?? 0).toString() },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                    <span className="text-sm text-zinc-500">{item.label}</span>
-                    <span className="text-sm font-semibold text-white">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-          ) : null}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <SectionCard title="Access Ladder" subtitle="Anonymous preview, full free account, then premium for heavier daily use.">
-            <div className="space-y-2 text-[11px] text-zinc-500">
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="font-semibold text-white">Public preview</p>
-                <p className="mt-1">Anonymous users can see a live sample of top stories, market movers, and regional hotspots before creating an account.</p>
+        {isAdmin ? (
+          <SectionCard title="System Reliability" subtitle="Use this to confirm whether ingestion is alive, how often cron should run, and which upstream feeds are hurting coverage.">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Last ingestion</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {status?.lastIngestion?.completedAt ? relativeTime(status.lastIngestion.completedAt) : "Never"}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">Status {status?.lastIngestion?.status ?? "idle"}</p>
+                </div>
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Cron cadence</p>
+                  <p className="mt-2 text-sm font-semibold text-white">Every 2 hours on Vercel</p>
+                  <p className="mt-1 text-xs text-zinc-500">Daily digest remains on its separate morning schedule.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Feed network</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{status?.sourceHealth?.label || "Unavailable"}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{status?.sourceHealth?.description || "No source-health summary yet."}</p>
+                </div>
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Coverage</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {status?.stats?.totalEvents ?? 0} events / {status?.stats?.recentEvents24h ?? 0} in last 24h
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {status?.stats?.totalCorrelations ?? 0} correlations / {status?.stats?.totalPatterns ?? 0} patterns
+                  </p>
+                </div>
               </div>
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="font-semibold text-white">Free account</p>
-                <p className="mt-1">Dashboard, timeline, digest, one watchlist, three alerts, three saved views, and the top five digest stories.</p>
-              </div>
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="font-semibold text-white">Premium</p>
-                <p className="mt-1">Unlimited alerts, unlimited watchlists and saved views, deeper explainers, faster market refresh, and richer briefing flows.</p>
-              </div>
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="font-semibold text-white">Ads</p>
-                <p className="mt-1">No programmatic ads. If you ever monetize free surfaces with sponsors, keep it to tasteful sponsor slots only.</p>
+
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-sm font-semibold text-white">Manual sync check</p>
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                    If the surface looks stale, this triggers the same guarded sync path the client uses when data is old.
+                  </p>
+                  <div className="mt-4 flex gap-2">
+                    <button type="button" onClick={handleSyncNow} className="btn-primary">
+                      {syncStatus === "running" ? "Running..." : "Run sync now"}
+                    </button>
+                    <button type="button" onClick={() => mutateStatus()} className="btn-secondary">
+                      Refresh status
+                    </button>
+                  </div>
+                  {syncStatus === "done" ? <p className="mt-3 text-[11px] text-emerald">Sync request accepted.</p> : null}
+                  {syncStatus === "error" ? <p className="mt-3 text-[11px] text-red-400">Sync request failed.</p> : null}
+                </div>
+
+                {(status?.sourceHealth?.activeIssues ?? []).length ? (
+                  <div className="space-y-2">
+                    {status?.sourceHealth?.activeIssues?.slice(0, 3).map((issue) => (
+                      <div key={issue.source} className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-white">{issue.source}</p>
+                          <span className="chip">{issue.label}</span>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-5 text-zinc-500">{issue.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </SectionCard>
-        </div>
+        ) : null}
       </div>
     </Layout>
   );

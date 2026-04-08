@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { ensureDefaultEntitlements } from "./entitlements";
 import { stringifyStringArray } from "./json";
+import { DEFAULT_WORKSPACE, serializeWorkspaceState } from "./workspace";
 
 export async function bootstrapUserProductState(userId: string, options?: {
   timezone?: string;
@@ -48,6 +49,14 @@ export async function bootstrapUserProductState(userId: string, options?: {
         timezone,
         digestHour,
         deliveryChannels: channels,
+      },
+    }),
+    prisma.userWorkspace.upsert({
+      where: { userId },
+      update: {},
+      create: {
+        userId,
+        ...serializeWorkspaceState(DEFAULT_WORKSPACE),
       },
     }),
   ]);

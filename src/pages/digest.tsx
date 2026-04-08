@@ -1,89 +1,66 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import Layout from "../components/layout/Layout";
+import HeatBadge from "../components/ui/HeatBadge";
 import SectionCard from "../components/ui/SectionCard";
-import SeverityBadge from "../components/ui/SeverityBadge";
 import SymbolHoverCard from "../components/ui/SymbolHoverCard";
 import TrustSummary from "../components/ui/TrustSummary";
-import { useEvents } from "../lib/hooks/useEvents";
-import { useQuotes } from "../lib/hooks/useQuotes";
-import { usePatterns } from "../lib/hooks/usePatterns";
-import { usePreferences } from "../lib/hooks/usePreferences";
+import { formatCurrency, formatPct, relativeTime } from "../lib/format";
 import { useEntitlements } from "../lib/hooks/useEntitlements";
-import { relativeTime, formatPct, formatCurrency } from "../lib/format";
-import { resolvePatternMove } from "../lib/marketDisplay";
-import { getMarketFreshnessLabel } from "../lib/marketPresentation";
+import { useEvents } from "../lib/hooks/useEvents";
+import { usePreferences } from "../lib/hooks/usePreferences";
+import { useQuotes } from "../lib/hooks/useQuotes";
+import { useRiskOverview } from "../lib/hooks/useRiskOverview";
 import { requireAuth } from "../lib/serverAuth";
 
 export default function Digest() {
-  const { events } = useEvents({ from: "36h", sort: "relevance", limit: 40 });
-  const { patterns } = usePatterns();
   const { preferences } = usePreferences();
   const { entitlements } = useEntitlements();
+  const { riskOverview } = useRiskOverview("72h");
+  const { events } = useEvents({ timeWindow: "72h", sort: "relevance", limit: 40 });
 
   const personalizedStories = useMemo(() => {
     return [...events]
       .map((event) => {
         let preferenceBoost = 0;
         if (preferences.categories.includes(event.category || "general")) preferenceBoost += 2;
-        if (preferences.regions.includes(event.region)) preferenceBoost += 1.5;
-        if (event.correlations?.some((corr) => preferences.symbols.includes(corr.symbol))) preferenceBoost += 2;
+        if (preferences.regions.includes(event.region)) preferenceBoost += 2;
+        if ((event.correlations ?? []).some((correlation) => preferences.symbols.includes(correlation.symbol))) preferenceBoost += 2.5;
 
         return {
           ...event,
           digestScore:
-            (event.relevanceScore ?? 0)
-            + preferenceBoost
-            + (event.supportingSourcesCount ?? 1)
-            + ((event.intelligenceQuality ?? 0.5) * 2),
+            (event.relevanceScore ?? 0) +
+            preferenceBoost +
+            (event.supportingSourcesCount ?? 1) +
+            ((event.intelligenceQuality ?? 0.5) * 3),
         };
       })
-      .sort((a, b) => b.digestScore - a.digestScore);
-  }, [events, preferences]);
+      .sort((left, right) => right.digestScore - left.digestScore);
+  }, [events, preferences.categories, preferences.regions, preferences.symbols]);
 
   const storyLimit = entitlements?.limits?.digestStories ?? 5;
   const stories = personalizedStories.slice(0, storyLimit);
+  const leadStory = stories[0] || null;
 
-  const allSymbols = useMemo(() => {
-    const set = new Set<string>();
-    stories.forEach((story) => story.correlations?.forEach((corr) => set.add(corr.symbol)));
-    return Array.from(set);
+  const symbols = useMemo(() => {
+    return Array.from(
+      new Set(stories.flatMap((story) => (story.correlations ?? []).map((correlation) => correlation.symbol)))
+    ).slice(0, 14);
   }, [stories]);
 
-  const { quotes, meta: quoteMeta } = useQuotes(allSymbols);
+  const { quotes } = useQuotes(symbols);
   const quoteMap = useMemo(() => {
     const map = new Map<string, (typeof quotes)[number]>();
     quotes.forEach((quote) => map.set(quote.symbol, quote));
     return map;
   }, [quotes]);
 
-  const watchlistSignals = useMemo(() => {
-    return stories.filter((story) =>
-      story.correlations?.some((corr) => preferences.symbols.includes(corr.symbol))
-    ).slice(0, 5);
-  }, [preferences.symbols, stories]);
-
-  const regionalRoundup = useMemo(() => {
-    const counts = stories.reduce<Record<string, number>>((acc, story) => {
-      acc[story.region] = (acc[story.region] || 0) + 1;
-      return acc;
-    }, {});
-
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [stories]);
-
-  const movers = useMemo(() => {
-    return [...quotes]
-      .filter((quote) => quote.price > 0)
-      .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
-      .slice(0, 8);
-  }, [quotes]);
-
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
-    year: "numeric",
     month: "long",
     day: "numeric",
+    year: "numeric",
   });
 
   return (
@@ -91,174 +68,171 @@ export default function Digest() {
       <div className="space-y-4">
         <SectionCard
           title="Morning Brief"
-          subtitle={`Your ${preferences.digestHour}:00 ${preferences.timezone} briefing for finance-relevant global risk.`}
-          action={<Link href="/settings" className="ghost-chip hover:bg-white/[0.06]">Edit delivery settings</Link>}
+          subtitle={`Scheduled for ${preferences.digestHour}:00 ${preferences.timezone}. Built around risk posture, lead narrative, and exposed assets.`}
+          action={<Link href="/settings" className="status-pill">Delivery settings</Link>}
         >
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-zinc-300">
-              {today}
-            </span>
-            <span className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-zinc-300">
-              {stories.length} curated stories
-            </span>
-            <span className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-zinc-300">
-              Market data: {getMarketFreshnessLabel(quoteMeta?.freshness)}
-            </span>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_320px]">
+            <div className="rounded-[26px] border border-white/[0.06] bg-black/60 p-5">
+              <p className="kicker">Executive summary</p>
+              <h2 className="mt-4 text-2xl font-semibold text-white">{today}</h2>
+              <p className="mt-4 text-sm leading-7 text-zinc-400">
+                {leadStory && riskOverview?.narratives[0]
+                  ? `${riskOverview.narratives[0].region} leads the current narrative stack. The first file to open is "${leadStory.title}" because it combines fresh coverage, better corroboration, and direct asset exposure through ${leadStory.correlations?.slice(0, 2).map((item) => item.symbol).join(" and ") || "the current mover board"}.`
+                  : "The briefing will populate as fresh narratives and market reactions arrive."}
+              </p>
+              {leadStory ? (
+                <div className="mt-5 rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                    Lead file / {leadStory.region} / {relativeTime(leadStory.publishedAt)}
+                  </p>
+                  <p className="mt-2 text-lg font-semibold leading-8 text-white">{leadStory.title}</p>
+                  <TrustSummary className="mt-4" reliability={leadStory.reliability} />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-[24px] border border-white/[0.06] bg-black/60 p-4">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Radar posture</p>
+                <p className="mt-3 text-3xl font-semibold text-white">{riskOverview?.radar.pressureScore ?? 0}</p>
+                <p className="mt-1 text-sm text-zinc-500 capitalize">{riskOverview?.radar.posture || "mixed"} across the current mover board</p>
+                <div className="mt-4 h-2 rounded-full bg-white/[0.05]">
+                  <div
+                    className="h-2 rounded-full bg-gradient-to-r from-cyan to-emerald"
+                    style={{ width: `${Math.min(100, riskOverview?.radar.pressureScore ?? 0)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-white/[0.06] bg-black/60 p-4">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Story budget</p>
+                <p className="mt-3 text-3xl font-semibold text-white">{stories.length}</p>
+                <p className="mt-1 text-sm text-zinc-500">Top stories included in this briefing window</p>
+              </div>
+              <div className="rounded-[24px] border border-white/[0.06] bg-black/60 p-4">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Priority region</p>
+                <p className="mt-3 text-xl font-semibold text-white">{riskOverview?.regions[0]?.scopeLabel || "No active zone"}</p>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {riskOverview?.regions[0]
+                    ? `${riskOverview.regions[0].storyCount} stories / support ${Math.round(riskOverview.regions[0].supportScore * 100)}%`
+                    : "Waiting for fresh signal"}
+                </p>
+              </div>
+            </div>
           </div>
         </SectionCard>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-          <div className="space-y-4">
-            <SectionCard title="Top Stories" subtitle="The highest-signal stories based on relevance, trust, and your interests.">
-              <div className="space-y-3">
-                {stories.map((story, index) => (
-                  <div key={story.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-[11px] font-bold text-zinc-400">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-600">
-                          <span>{story.source}</span>
-                          <span>&#183;</span>
-                          <span>{story.region}</span>
-                          <span>&#183;</span>
-                          <span>{relativeTime(story.publishedAt)}</span>
-                          <span>&#183;</span>
-                          <span>{story.supportingSourcesCount ?? 1} sources</span>
-                        </div>
-                        <h3 className="mt-1 text-[15px] font-semibold leading-snug text-white">
-                          <Link href={`/event/${story.id}`} className="!text-white hover:!text-emerald transition-colors">
-                            {story.title}
-                          </Link>
-                        </h3>
-                        <p className="mt-1 text-[12px] text-zinc-500">{story.summary}</p>
-                        {story.whyThisMatters && (
-                          <p className="mt-2 rounded-lg border border-emerald/10 bg-emerald/5 px-3 py-2 text-[11px] leading-relaxed text-zinc-300">
-                            <span className="font-semibold text-emerald">Why it matters:</span> {story.whyThisMatters}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <SectionCard title="What Changed" subtitle="Start with these files in order. The list already accounts for your tracked topics, regions, and symbols.">
+            <div className="space-y-3">
+              {stories.map((story, index) => (
+                <div key={story.id} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="hidden h-10 w-10 shrink-0 rounded-2xl border border-white/[0.06] bg-black/60 text-center text-sm font-semibold leading-10 text-zinc-400 sm:block">
+                      0{index + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                            {story.region} / {story.category} / {relativeTime(story.publishedAt)}
                           </p>
-                        )}
-                        <TrustSummary
-                          className="mt-2"
-                          compact
-                          supportingSourcesCount={story.supportingSourcesCount}
-                          sourceReliability={story.sourceReliability}
-                          intelligenceQuality={story.intelligenceQuality}
-                          publishedAt={story.publishedAt}
-                        />
-
-                        {(story.correlations?.length ?? 0) > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {story.correlations!.slice(0, 5).map((corr) => {
-                              const quote = quoteMap.get(corr.symbol);
-                              return (
-                                <SymbolHoverCard key={`${story.id}-${corr.symbol}`} symbol={corr.symbol}>
-                                  <Link
-                                    href={`/stock/${corr.symbol}`}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.05] bg-white/[0.03] px-2.5 py-1.5 text-[11px] hover:bg-white/[0.05] transition"
-                                  >
-                                    <span className="font-bold text-zinc-300">{corr.symbol}</span>
-                                    {quote && quote.price > 0 && (
-                                      <>
-                                        <span className="text-zinc-600">{formatCurrency(quote.price, quote.currency || "USD")}</span>
-                                        <span className={quote.changePct >= 0 ? "text-emerald" : "text-red-400"}>
-                                          {formatPct(quote.changePct)}
-                                        </span>
-                                      </>
-                                    )}
-                                  </Link>
-                                </SymbolHoverCard>
-                              );
-                            })}
-                          </div>
-                        )}
+                          <h3 className="mt-2 text-lg font-semibold leading-8 text-white">
+                            <Link href={`/event/${story.id}`} className="!text-white hover:!text-cyan">
+                              {story.title}
+                            </Link>
+                          </h3>
+                        </div>
+                        {story.cluster ? <HeatBadge heatLevel={story.cluster.heatLevel} trend={story.cluster.trend} /> : null}
                       </div>
-                      <SeverityBadge severity={story.severity ?? 1} />
+                      <p className="mt-3 text-sm leading-6 text-zinc-400">{story.whyThisMatters || story.summary}</p>
+                      <TrustSummary className="mt-3" reliability={story.reliability} />
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(story.correlations ?? []).slice(0, 5).map((correlation) => {
+                          const quote = quoteMap.get(correlation.symbol);
+                          return (
+                            <SymbolHoverCard key={`${story.id}-${correlation.symbol}`} symbol={correlation.symbol}>
+                              <Link href={`/stock/${correlation.symbol}`} className="chip">
+                                <span>{correlation.symbol}</span>
+                                {quote ? (
+                                  <span className={quote.changePct >= 0 ? "text-emerald" : "text-red-400"}>
+                                    {formatPct(quote.changePct)}
+                                  </span>
+                                ) : null}
+                              </Link>
+                            </SymbolHoverCard>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </SectionCard>
-          </div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
 
           <div className="space-y-4">
-            <SectionCard title="Watchlist Signals" subtitle="Stories touching your chosen symbols first.">
-              {watchlistSignals.length === 0 ? (
-                <p className="py-4 text-center text-[11px] text-zinc-600">
-                  Add symbols in Settings to unlock a more tailored morning brief.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {watchlistSignals.map((story) => (
-                    <Link
-                      href={`/event/${story.id}`}
-                      key={story.id}
-                      className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
-                    >
-                      <p className="text-xs font-semibold text-white">{story.title}</p>
-                      <p className="mt-1 text-[10px] text-zinc-600">
-                        {(story.correlations ?? []).map((corr) => corr.symbol).slice(0, 4).join(" | ")}
-                      </p>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard title="Regional Roundup" subtitle="Where today's risk is clustering.">
-              <div className="space-y-2">
-                {regionalRoundup.map(([region, count]) => (
-                  <div key={region} className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                    <span className="text-xs font-semibold text-zinc-300">{region}</span>
-                    <span className="text-xs font-bold text-amber-400">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Market Movers" subtitle="Largest percent moves among assets linked to today's stories.">
-              <div className="space-y-1.5">
-                {movers.map((quote) => (
-                  <Link
-                    href={`/stock/${quote.symbol}`}
-                    key={quote.symbol}
-                    className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
-                  >
-                    <span className="text-sm font-bold text-zinc-300">{quote.symbol}</span>
-                    <div className="text-right">
-                      <span className="text-xs text-zinc-500">{formatCurrency(quote.price, quote.currency || "USD")}</span>
-                      <span className={`ml-2 text-xs font-bold ${quote.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
-                        {formatPct(quote.changePct)}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </SectionCard>
-
-            {patterns.length > 0 && (
-              <SectionCard title="Pattern Watch" subtitle="Recurring setups learned from past event-to-market links.">
-                <div className="space-y-2">
-                  {patterns.slice(0, 5).map((pattern: any) => {
-                    const change = resolvePatternMove(pattern.direction, pattern.avgImpactPct);
-
-                    return (
-                      <div key={pattern.id} className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-zinc-300">{pattern.symbol}</span>
-                          <span className={`text-xs font-bold ${change >= 0 ? "text-emerald" : "text-red-400"}`}>
-                            {formatPct(change)}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[10px] text-zinc-600">
-                          {pattern.eventCategory} | {pattern.occurrences} historical matches | {Math.round(pattern.confidence * 100)}% confidence
+            <SectionCard title="Risk Shift" subtitle="The regions that are moving the current briefing window.">
+              <div className="space-y-3">
+                {(riskOverview?.regions ?? []).slice(0, 4).map((region) => (
+                  <div key={region.scopeKey} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{region.scopeLabel}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {region.storyCount} stories / pressure {region.marketPressure}
                         </p>
                       </div>
-                    );
-                  })}
-                </div>
-              </SectionCard>
-            )}
+                      <HeatBadge heatLevel={region.heatLevel} trend={region.trend} />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {region.topSymbols.map((symbol) => (
+                        <SymbolHoverCard key={`${region.scopeKey}-${symbol}`} symbol={symbol}>
+                          <span className="chip">{symbol}</span>
+                        </SymbolHoverCard>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Narrative Board" subtitle="The clusters most likely to matter before the next refresh.">
+              <div className="space-y-3">
+                {(riskOverview?.narratives ?? []).slice(0, 3).map((narrative) => (
+                  <div key={narrative.clusterId} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          {narrative.region} / {narrative.category}
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-white">{narrative.headline}</p>
+                      </div>
+                      <HeatBadge heatLevel={narrative.heatLevel} trend={narrative.trend} />
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">{narrative.whyNow}</p>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Mover Board" subtitle="Snapshot-backed price context for the symbols most exposed to today’s stories.">
+              <div className="space-y-2">
+                {(riskOverview?.radar.topMovers ?? []).slice(0, 6).map((mover) => (
+                  <div key={mover.symbol} className="flex items-center justify-between rounded-[24px] border border-white/[0.06] bg-black/55 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{mover.symbol}</p>
+                      <p className="text-xs text-zinc-500">{mover.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-white">{formatCurrency(mover.price)}</p>
+                      <p className={`text-xs font-semibold ${mover.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
+                        {formatPct(mover.changePct)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
           </div>
         </div>
       </div>

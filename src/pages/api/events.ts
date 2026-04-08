@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
 import { buildEventOrderBy, buildEventWhere, parseArrayParam } from "../../lib/eventFilters";
 import { summarizeEventIntelligence } from "../../lib/intelligence";
+import { buildEventReliability, matchSourceHealth, summarizeSourceHealth } from "../../lib/reliability";
+import { buildNarrativeClusters } from "../../lib/risk";
 import { applyPublicReadGuard, sendPublicApiError } from "../../lib/publicApi";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -73,6 +75,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hasMore = events.length > limit;
     const page = hasMore ? events.slice(0, limit) : events;
     const nextCursor = hasMore ? page[page.length - 1]?.id : null;
+    const clusterIds = Array.from(
+      new Set(page.map((event) => event.duplicateClusterId).filter((value): value is string => Boolean(value)))
+    );
+    const relatedClusterEvents = clusterIds.length > 0
+      ? await prisma.event.findMany({
+          where: {
+            duplicateClusterId: { in: clusterIds },
+            publishedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+          },
+          include: {
+            correlations: {
+              select: {
+                symbol: true,
+                impactScore: true,
+                impactDirection: true,
+                impactMagnitude: true,
+              },
+            },
+          },
+          take: 120,
+        })
+      : [];
+    const clusterMap = new Map(
+      buildNarrativeClusters(
+        relatedClusterEvents.map((event) => ({
+          ...event,
+          publishedAt: event.publishedAt.toISOString(),
+        })),
+        20
+      ).map((cluster) => [cluster.clusterId, cluster])
+    );
+    const sourceHealthRows = await prisma.sourceHealth.findMany({
+      where: {
+        source: {
+          in: Array.from(new Set(page.map((event) => event.source))),
+        },
+      },
+      select: {
+        source: true,
+        feedUrl: true,
+        status: true,
+        lastFetchedAt: true,
+        lastSucceededAt: true,
+        lastError: true,
+        lastLatencyMs: true,
+        failureCount: true,
+        successCount: true,
+        updatedAt: true,
+      },
+    });
+    const sourceHealth = summarizeSourceHealth(sourceHealthRows);
     const enrichedPage = page.map((event) => {
       const intelligence = summarizeEventIntelligence({
         title: event.title,
@@ -85,6 +138,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sourceReliability: event.sourceReliability ?? undefined,
         symbols: event.correlations.map((corr) => corr.symbol),
       });
+      const matchedSourceHealth = matchSourceHealth(sourceHealth.sources, event.source);
 
       return {
         ...event,
@@ -92,6 +146,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         intelligenceQuality: intelligence.intelligenceQuality,
         whyThisMatters: intelligence.whyThisMatters,
         relevanceScore: intelligence.relevanceScore,
+        cluster: event.duplicateClusterId ? clusterMap.get(event.duplicateClusterId) || null : null,
+        reliability: buildEventReliability({
+          source: event.source,
+          supportingSourcesCount: event.supportingSourcesCount,
+          sourceReliability: event.sourceReliability,
+          intelligenceQuality: intelligence.intelligenceQuality,
+          publishedAt: event.publishedAt,
+          sourceHealth: matchedSourceHealth,
+        }),
       };
     });
 

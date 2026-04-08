@@ -22,3 +22,7 @@ export function parseJsonObject<T>(value: string | null | undefined, fallback: T
     return fallback;
   }
 }
+
+export function stringifyJsonObject<T>(value: T): string {
+  return JSON.stringify(value);
+}

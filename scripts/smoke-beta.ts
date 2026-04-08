@@ -28,7 +28,7 @@ async function expectJson(path: string) {
 async function main() {
   console.log(`Running GeoPulse beta smoke against ${BASE_URL}`);
 
-  await expectHtml("/", "GeoPulse");
+  await expectHtml("/", "command center");
   await expectHtml("/auth/signup", "Create your account");
 
   const dashboardResponse = await request("/dashboard");
@@ -57,6 +57,13 @@ async function main() {
   const { payload: eventPayload } = await expectJson(`/api/events/${firstEventId}`);
   assert.ok(eventPayload?.event?.title, "/api/events/[id] should return an event");
   assert.ok(eventPayload?.trust?.supportingSourcesCount >= 1, "/api/events/[id] should include trust metadata");
+  assert.ok(Array.isArray(eventPayload?.timeline), "/api/events/[id] should include the narrative timeline");
+  assert.ok(Array.isArray(eventPayload?.nextWatch), "/api/events/[id] should include next-watch guidance");
+
+  const { payload: riskPayload } = await expectJson("/api/risk/overview?window=72h");
+  assert.ok(Array.isArray(riskPayload?.regions), "/api/risk/overview should return regions");
+  assert.ok(Array.isArray(riskPayload?.narratives), "/api/risk/overview should return narratives");
+  assert.ok(riskPayload?.radar?.pressureScore >= 0, "/api/risk/overview should include radar pressure");
 
   const { response: quotesResponse, payload: quotesPayload } = await expectJson("/api/markets/quotes?symbols=SPY,QQQ,GLD");
   assert.ok(Array.isArray(quotesPayload?.quotes), "/api/markets/quotes should return quotes");
@@ -82,6 +89,7 @@ async function main() {
   console.log("- public preview pages render");
   console.log("- anonymous dashboard access redirects");
   console.log("- public APIs return data plus cache/rate-limit headers");
+  console.log("- risk overview and enriched event detail routes are live");
   console.log("- cron is protected");
   console.log("- signup abuse guard rejects honeypot traffic");
 }

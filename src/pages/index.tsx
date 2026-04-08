@@ -1,28 +1,27 @@
 import Link from "next/link";
 import type { GetServerSidePropsContext, InferGetServerSidePropsType } from "next";
 import PublicLayout from "../components/layout/PublicLayout";
+import HeatBadge from "../components/ui/HeatBadge";
 import SymbolHoverCard from "../components/ui/SymbolHoverCard";
 import TrustSummary from "../components/ui/TrustSummary";
 import { formatCurrency, formatPct, relativeTime } from "../lib/format";
 import { getMarketFreshnessLabel } from "../lib/marketPresentation";
 import { getPublicPreviewData } from "../lib/publicPreview";
+import { getRiskOverview } from "../lib/risk";
 import { getOptionalPageUser } from "../lib/serverAuth";
 
-const WORKFLOWS = [
+const PRODUCT_STEPS = [
   {
-    title: "Morning Brief",
-    description:
-      "A 7am local-time digest that explains what changed overnight, which assets are exposed, and what deserves attention before the open.",
+    label: "1. Start with pressure",
+    description: "See which region and narrative moved to the top before reading the full stream.",
   },
   {
-    title: "Risk Radar",
-    description:
-      "A filtered event feed for macro, defense, sanctions, energy, and regional stress, built to answer why markets care instead of dumping raw headlines.",
+    label: "2. Validate the signal",
+    description: "Use corroboration, source quality, and freshness so you know whether the story is early, solid, or still noisy.",
   },
   {
-    title: "Regional Tracker",
-    description:
-      "Persistent views for the regions and symbols you actually follow so the product becomes a repeat workflow, not a one-time dashboard visit.",
+    label: "3. Move into research",
+    description: "Open the dashboard, map, digest, and event file without switching tools or rebuilding context.",
   },
 ] as const;
 
@@ -30,275 +29,330 @@ const ACCESS_LADDER = [
   {
     name: "Public preview",
     price: "Free",
-    description: "A live anonymous glance at the latest high-signal stories, regional hotspots, and delayed market snapshots.",
-    features: [
-      "Top stories with plain-English why-it-matters context",
-      "Regional hotspots and recent market movers",
-      "No account required",
-    ],
+    description: "Live radar, hotspots, top stories, and market reaction before signup.",
   },
   {
     name: "Free account",
     price: "$0",
-    description: "The full core workflow for serious evaluation before anyone pays, plus a 7-day premium trial on signup.",
-    features: [
-      "Dashboard, digest, timeline, map, and event drill-downs",
-      "1 watchlist, 3 alerts, 3 saved views",
-      "Daily digest with the top 5 stories after the trial window",
-    ],
+    description: "Command center, map, digest, and persistent workspace state.",
   },
   {
     name: "Premium",
     price: "$8/mo or $79/yr",
-    description: "Higher-capacity workflows for users who want GeoPulse as a daily operating surface.",
-    features: [
-      "Unlimited alerts, watchlists, and saved views",
-      "10-story digest plus intraday briefing scaffolding",
-      "Premium insights and faster market refresh when enabled",
-    ],
+    description: "More depth, more persistence, and a larger operating budget for daily use.",
   },
 ] as const;
 
 export default function Home({
   preview,
+  risk,
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
+  const topNarrative = risk.narratives[0] || null;
+  const topZone = risk.regions[0] || null;
+  const topMover = preview.topMovers[0] || null;
+
   return (
     <PublicLayout>
-      <div className="flex flex-1 flex-col gap-8">
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="flex flex-col gap-5">
-            <span className="chip">Built for finance-curious investors, macro operators, and analysts</span>
-            <div className="space-y-4">
-              <h1 className="text-4xl font-bold text-white md:text-6xl">
-                Understand what happened, <span className="text-gradient">why markets care,</span> and what to watch next.
-              </h1>
-              <p className="max-w-2xl text-base leading-7 text-zinc-400">
-                GeoPulse turns geopolitical events into investor-ready context. The public preview shows the live surface. Free accounts unlock the full dashboard.
-                Premium is reserved for deeper workflows, higher limits, and faster briefings.
-              </p>
-              <p className="max-w-2xl text-sm leading-6 text-zinc-500">
-                The first 10 users keep premium for life, and every new signup starts with a 7-day premium trial before dropping to the free core workflow.
-              </p>
+      <div className="flex flex-1 flex-col gap-6 pb-10">
+        <section className="command-surface overflow-hidden p-6 sm:p-8">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_380px]">
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="kicker">Finance-First Geopolitical Monitoring</span>
+                <span className="chip">
+                  {preview.metrics.degradedSources > 0
+                    ? `${preview.metrics.degradedSources} feeds degraded`
+                    : "Feed network healthy"}
+                </span>
+              </div>
+
+              <div className="max-w-4xl space-y-4">
+                <h1 className="text-4xl font-bold leading-[0.95] text-white sm:text-5xl xl:text-[4.4rem]">
+                  Understand what changed,
+                  <br />
+                  why it matters,
+                  <br />
+                  <span className="text-gradient">and which assets are exposed.</span>
+                </h1>
+                <p className="max-w-2xl text-base leading-7 text-zinc-400 sm:text-lg">
+                  GeoPulse turns fast-moving geopolitical headlines into one clean operating surface:
+                  pressure, priority region, validated story, and market reaction.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link href="/auth/signup" className="btn-primary">
+                  Create free account
+                </Link>
+                <Link href="/#live-preview" className="btn-secondary">
+                  See the live preview
+                </Link>
+                <Link href="/auth/signin" className="btn-secondary">
+                  Sign in
+                </Link>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                {PRODUCT_STEPS.map((step) => (
+                  <div key={step.label} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-5">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-cyan">{step.label}</p>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">{step.description}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <Link href="/#live-preview" className="btn-primary">
-                Open live preview
-              </Link>
-              <Link href="/auth/signup" className="btn-secondary">
-                Create free account
-              </Link>
-              <Link href="/auth/signin" className="ghost-chip hover:bg-white/[0.06]">
-                Sign in
-              </Link>
-            </div>
-
-            <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
-              <span className="rounded-full border border-emerald/20 bg-emerald/10 px-3 py-1 text-emerald">
-                {preview.metrics.foundingSpotsRemaining > 0
-                  ? `${preview.metrics.foundingSpotsRemaining} of 10 lifetime premium spots remaining`
-                  : "Founding lifetime premium closed"}
-              </span>
-              <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1">
-                {preview.metrics.totalEvents.toLocaleString()} total events tracked
-              </span>
-              <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1">
-                {preview.metrics.recentEvents24h} events in the last 24h
-              </span>
-              <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1">
-                {preview.metrics.totalCorrelations.toLocaleString()} market links
-              </span>
-            </div>
-          </div>
-
-          <div className="surface-card p-6">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Why it is useful</p>
-            <div className="mt-4 space-y-4">
-              {WORKFLOWS.map((workflow) => (
-                <div key={workflow.title} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <h2 className="text-sm font-semibold text-white">{workflow.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-zinc-400">{workflow.description}</p>
+            <div className="rounded-[28px] border border-white/[0.06] bg-black/60 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="kicker">Live Command Snapshot</p>
+                  <h2 className="mt-4 text-2xl font-semibold text-white">Start here</h2>
                 </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-400/5 p-4">
-              <p className="text-sm font-semibold text-white">Current product flow</p>
-              <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Anonymous users get a live glance. New users get a premium trial. Free accounts keep the core research workflow. Premium adds capacity, richer briefings, and faster signal delivery instead of taking away the basics.
-              </p>
+                <span className="chip capitalize">{risk.radar.posture}</span>
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/60 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Pressure</p>
+                  <div className="mt-3 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-3xl font-semibold text-white">{risk.radar.pressureScore}/100</p>
+                      <p className="mt-1 text-xs text-zinc-500">Current market posture is {risk.radar.posture}</p>
+                    </div>
+                    <div className="text-right text-xs text-zinc-500">
+                      <p>{risk.radar.breadth.positive} up</p>
+                      <p>{risk.radar.breadth.flat} flat</p>
+                      <p>{risk.radar.breadth.negative} down</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-white/[0.06]">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-cyan via-emerald to-amber-400"
+                      style={{ width: `${Math.min(100, risk.radar.pressureScore)}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[22px] border border-white/[0.06] bg-black/60 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Priority region</p>
+                    <p className="mt-3 text-lg font-semibold text-white">{topZone?.scopeLabel || "No active zone"}</p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      {topZone
+                        ? `${topZone.storyCount} stories / ${topZone.narrativeCount} narratives`
+                        : "Waiting for fresh signal"}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] border border-white/[0.06] bg-black/60 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Top mover</p>
+                    <p className="mt-3 text-lg font-semibold text-white">{topMover?.symbol || "No quote"}</p>
+                    <p className={`mt-1 text-sm font-semibold ${topMover && topMover.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
+                      {topMover ? formatPct(topMover.changePct) : "Snapshot unavailable"}
+                    </p>
+                  </div>
+                </div>
+
+                {topNarrative ? (
+                  <div className="rounded-[22px] border border-white/[0.06] bg-black/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          {topNarrative.region} / {topNarrative.category}
+                        </p>
+                        <p className="mt-2 text-lg font-semibold leading-8 text-white">{topNarrative.headline}</p>
+                      </div>
+                      <HeatBadge heatLevel={topNarrative.heatLevel} trend={topNarrative.trend} />
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">{topNarrative.whyNow}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {topNarrative.watchSymbols.slice(0, 4).map((symbol) => (
+                        <SymbolHoverCard key={symbol} symbol={symbol}>
+                          <span className="chip">{symbol}</span>
+                        </SymbolHoverCard>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </section>
 
-        <section id="live-preview" className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="surface-card p-6">
+        <section id="live-preview" className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_360px]">
+          <div className="command-surface p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Live preview</p>
-                <h2 className="mt-2 text-2xl font-bold text-white">High-signal stories from the last 72 hours</h2>
-                <p className="mt-1 text-sm text-zinc-500">The public preview favors stories with clearer confirmation and more defensible market relevance.</p>
+                <p className="kicker">Live Stories</p>
+                <h2 className="mt-4 text-2xl font-semibold text-white">The highest-signal stories first</h2>
+                <p className="mt-2 text-sm text-zinc-500">
+                  Last ingestion {preview.lastIngestion?.completedAt ? relativeTime(preview.lastIngestion.completedAt) : "not available"}
+                </p>
               </div>
-              <div className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-500">
-                Last ingestion {preview.lastIngestion?.completedAt ? relativeTime(preview.lastIngestion.completedAt) : "not available"}
-              </div>
+              <span className="chip">{Math.min(4, preview.previewStories.length)} priority stories</span>
             </div>
 
-            <div className="mt-5 space-y-3">
-              {preview.previewStories.map((story) => (
-                <article key={story.id} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                    <span>{story.region}</span>
-                    <span className="h-1 w-1 rounded-full bg-zinc-700" />
-                    <span>{story.category}</span>
-                    <span className="h-1 w-1 rounded-full bg-zinc-700" />
-                    <span>{story.supportingSourcesCount} sources</span>
+            <div className="mt-5 grid gap-3">
+              {preview.previewStories.slice(0, 4).map((story, index) => (
+                <article key={story.id} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex gap-4">
+                      <div className="hidden h-10 w-10 shrink-0 rounded-2xl border border-white/[0.06] bg-black/60 text-center text-sm font-semibold leading-10 text-zinc-400 sm:block">
+                        0{index + 1}
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          {story.region} / {story.category} / {story.source}
+                        </p>
+                        <h3 className="mt-2 text-xl font-semibold leading-8 text-white">{story.title}</h3>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-500">{relativeTime(story.publishedAt)}</p>
                   </div>
-                  <h3 className="mt-2 text-lg font-semibold text-white">{story.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-zinc-400">
-                    {story.whyThisMatters || story.summary}
-                  </p>
+
+                  <p className="mt-4 text-sm leading-6 text-zinc-400">{story.whyThisMatters || story.summary}</p>
+
                   <TrustSummary
-                    className="mt-3"
+                    className="mt-4"
                     supportingSourcesCount={story.supportingSourcesCount}
                     sourceReliability={story.sourceReliability}
                     intelligenceQuality={story.intelligenceQuality}
                     publishedAt={story.publishedAt}
                   />
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {story.correlations.slice(0, 4).map((correlation) => (
-                        <SymbolHoverCard key={`${story.id}-${correlation.symbol}`} symbol={correlation.symbol}>
-                          <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-zinc-300">
-                            {correlation.symbol}
-                          </span>
-                        </SymbolHoverCard>
-                      ))}
-                    </div>
-                    <div className="text-right text-[11px] text-zinc-500">
-                      <p>{story.source}</p>
-                      <p>{relativeTime(story.publishedAt)}</p>
-                    </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {story.correlations.slice(0, 4).map((correlation) => (
+                      <SymbolHoverCard key={`${story.id}-${correlation.symbol}`} symbol={correlation.symbol}>
+                        <span className="chip">{correlation.symbol}</span>
+                      </SymbolHoverCard>
+                    ))}
                   </div>
                 </article>
               ))}
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="surface-card p-6">
+          <div className="space-y-5">
+            <div className="command-surface p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Market snapshot</p>
-                  <h2 className="mt-2 text-xl font-bold text-white">Top movers tied to the current story set</h2>
+                  <p className="kicker">Hotspots</p>
+                  <h2 className="mt-4 text-xl font-semibold text-white">Where the map is heating up</h2>
                 </div>
-                <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-500">
-                  {preview.topMovers[0]?.freshness
-                    ? `${getMarketFreshnessLabel(preview.topMovers[0].freshness as "live" | "delayed" | "snapshot")} quotes`
-                    : "Snapshot quotes"}
+                <span className="chip">{risk.window}</span>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {risk.regions.slice(0, 4).map((region) => (
+                  <div key={region.scopeKey} className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{region.scopeLabel}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {region.storyCount} stories / support {Math.round(region.supportScore * 100)}%
+                        </p>
+                      </div>
+                      <HeatBadge heatLevel={region.heatLevel} trend={region.trend} />
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-white/[0.06]">
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-cyan via-emerald to-amber-400"
+                        style={{ width: `${Math.min(100, region.riskScore)}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {region.topSymbols.slice(0, 4).map((symbol) => (
+                        <SymbolHoverCard key={`${region.scopeKey}-${symbol}`} symbol={symbol}>
+                          <span className="chip">{symbol}</span>
+                        </SymbolHoverCard>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="command-surface p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="kicker">Mover Board</p>
+                  <h2 className="mt-4 text-xl font-semibold text-white">Cross-asset reaction</h2>
+                </div>
+                <span className="chip">
+                  {topMover?.freshness
+                    ? getMarketFreshnessLabel(topMover.freshness as "live" | "delayed" | "snapshot")
+                    : "Snapshot"}
                 </span>
               </div>
 
               <div className="mt-4 space-y-2">
                 {preview.topMovers.map((mover) => (
-                  <div
-                    key={mover.symbol}
-                    className="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3"
-                  >
-                    <div className="min-w-0">
+                  <div key={mover.symbol} className="flex items-center justify-between rounded-[22px] border border-white/[0.06] bg-black/55 px-4 py-3">
+                    <div>
                       <div className="flex items-center gap-2">
-                        <SymbolHoverCard symbol={mover.symbol}>
-                          <span className="text-sm font-semibold text-white">{mover.symbol}</span>
-                        </SymbolHoverCard>
-                        <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">{mover.assetClass}</span>
+                        <span className="text-sm font-semibold text-white">{mover.symbol}</span>
+                        <span className="text-[11px] text-zinc-500">{mover.assetClass}</span>
                       </div>
-                      <p className="truncate text-[11px] text-zinc-500">{mover.name}</p>
+                      <p className="text-xs text-zinc-500">{mover.name}</p>
                     </div>
+
                     <div className="text-right">
                       <p className="text-sm font-semibold text-white">{formatCurrency(mover.price)}</p>
-                      <p className={`text-[11px] font-semibold ${mover.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
+                      <p className={`text-xs font-semibold ${mover.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
                         {formatPct(mover.changePct)}
                       </p>
                     </div>
                   </div>
                 ))}
-                {preview.topMovers.length === 0 && (
-                  <p className="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-sm text-zinc-500">
-                    Snapshot data will populate again after the next market-sync cycle.
-                  </p>
-                )}
               </div>
             </div>
 
-            <div className="surface-card p-6">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Regional pressure</p>
-              <h2 className="mt-2 text-xl font-bold text-white">Where the current risk concentration sits</h2>
-              <div className="mt-4 space-y-2">
-                {preview.hotspots.map((hotspot) => (
-                  <div key={hotspot.region}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-zinc-200">{hotspot.region}</span>
-                      <span className="font-semibold text-white">{hotspot.count}</span>
-                    </div>
-                    <div className="mt-1 h-2 rounded-full bg-white/[0.05]">
-                      <div
-                        className="h-2 rounded-full bg-gradient-to-r from-emerald to-cyan"
-                        style={{
-                          width: `${Math.min(100, (hotspot.count / Math.max(preview.hotspots[0]?.count || 1, 1)) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
+            <div className="command-surface p-6">
+              <p className="kicker">Coverage Snapshot</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Tracked events</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{preview.metrics.totalEvents.toLocaleString()}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Structured into market-aware narratives</p>
+                </div>
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Fresh stories</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{preview.metrics.recentEvents24h}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Stories published inside the last 24 hours</p>
+                </div>
               </div>
-            </div>
-
-            <div className="surface-card p-6">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Why register</p>
-              <h2 className="mt-2 text-xl font-bold text-white">The preview is the sample, not the whole product</h2>
-              <div className="mt-4 space-y-2 text-sm text-zinc-400">
-                <p>Free accounts unlock the dashboard, timeline, map, alerts, watchlists, and personalized morning brief.</p>
-                <p>Every signup starts with a 7-day premium trial, and the first 10 users keep premium for life.</p>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link href="/auth/signup" className="btn-primary">
-                  Create free account
-                </Link>
-                <Link href="/auth/signin" className="ghost-chip hover:bg-white/[0.06]">
-                  Sign in
-                </Link>
-              </div>
+              {preview.hotspots.length ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {preview.hotspots.map((hotspot) => (
+                    <span key={hotspot.region} className="chip">
+                      {hotspot.region} {hotspot.count}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
 
-        <section id="plans" className="space-y-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Access model</p>
-            <h2 className="mt-2 text-2xl font-bold text-white">A conversion ladder that keeps the product useful before anyone pays</h2>
+        <section id="plans" className="command-surface p-6 sm:p-7">
+          <div className="flex flex-col gap-2">
+            <p className="kicker">Access Model</p>
+            <h2 className="text-2xl font-semibold text-white">Useful before payment, deeper after upgrade</h2>
+            <p className="max-w-3xl text-sm leading-6 text-zinc-500">
+              The free layer should already be actionable. Premium adds persistence and capacity, not basic usability.
+            </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
             {ACCESS_LADDER.map((plan) => (
-              <div key={plan.name} className="surface-card p-6">
+              <div key={plan.name} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-white">{plan.name}</p>
-                    <p className="mt-2 text-2xl font-bold text-white">{plan.price}</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">{plan.price}</p>
                   </div>
-                  {plan.name === "Premium" && (
-                    <span className="rounded-full border border-emerald/20 bg-emerald/10 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald">
-                      Best for daily users
-                    </span>
-                  )}
+                  {plan.name === "Premium" ? <span className="kicker">Best for daily use</span> : null}
                 </div>
                 <p className="mt-3 text-sm leading-6 text-zinc-400">{plan.description}</p>
-                <ul className="mt-4 space-y-2 text-sm text-zinc-300">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
             ))}
           </div>
@@ -314,11 +368,12 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
     return { redirect: { destination: "/dashboard", permanent: false } };
   }
 
-  const preview = await getPublicPreviewData();
+  const [preview, risk] = await Promise.all([getPublicPreviewData(), getRiskOverview("72h")]);
 
   return {
     props: {
       preview,
+      risk,
     },
   };
 }

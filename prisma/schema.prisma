@@ -11,21 +11,22 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(cuid())
-  name         String
-  email        String          @unique
-  supabaseAuthId String?       @unique
-  passwordHash String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  watchlists   Watchlist[]
-  alerts       Alert[]
-  preference   UserPreference?
-  savedFilters SavedFilter[]
-  digest       DigestSubscription?
-  subscription Subscription?
-  entitlements Entitlement[]
-  deliveries   EmailDelivery[]
+  id             String              @id @default(cuid())
+  name           String
+  email          String              @unique
+  supabaseAuthId String?             @unique
+  passwordHash   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  watchlists     Watchlist[]
+  alerts         Alert[]
+  preference     UserPreference?
+  workspace      UserWorkspace?
+  savedFilters   SavedFilter[]
+  digest         DigestSubscription?
+  subscription   Subscription?
+  entitlements   Entitlement[]
+  deliveries     EmailDelivery[]
 }
 
 model UserPreference {
@@ -252,6 +253,46 @@ model EmailDelivery {
   updatedAt            DateTime            @updatedAt
 
   @@index([userId, createdAt])
+}
+
+model UserWorkspace {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  panelOrder        String   @default("[\"risk\",\"narratives\",\"market\",\"watchlist\",\"briefing\"]")
+  collapsedPanels   String   @default("[]")
+  pinnedRegions     String   @default("[]")
+  pinnedSymbols     String   @default("[]")
+  defaultTimeWindow String   @default("24h")
+  defaultSort       String   @default("relevance")
+  activeView        String   @default("command")
+  density           String   @default("comfortable")
+  layoutMode        String   @default("focus")
+  railCollapsed     Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model RiskSnapshot {
+  id              String   @id @default(cuid())
+  scopeType       String
+  scopeKey        String
+  scopeLabel      String
+  snapshotWindow  String   @default("72h")
+  riskScore       Float
+  trend           String
+  heatLevel       String
+  storyCount      Int
+  supportScore    Float
+  marketPressure  Float
+  narrativeCount  Int      @default(0)
+  topSymbol       String?
+  metadata        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scopeType, scopeKey, snapshotWindow])
+  @@index([scopeType, snapshotWindow, riskScore])
 }
 
 model IngestionJob {

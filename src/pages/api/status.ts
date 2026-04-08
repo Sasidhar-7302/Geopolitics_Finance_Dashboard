@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
 import { startScheduler } from "../../lib/ingest/scheduler";
 import { applyPublicReadGuard, sendPublicApiError } from "../../lib/publicApi";
+import { serializeSourceHealthIssue, summarizeSourceHealth } from "../../lib/reliability";
 
 // Vercel uses vercel.json cron jobs. Keep the in-process scheduler for self-hosted runtimes only.
 if (process.env.VERCEL !== "1") {
@@ -95,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const [lastLog, lastCompletedLog, rawLastJob, eventCount, correlationCount, patternCount, recentEvents, degradedSources] = await Promise.all([
+    const [lastLog, lastCompletedLog, rawLastJob, eventCount, correlationCount, patternCount, recentEvents, degradedSources, sourceHealthRows] = await Promise.all([
       prisma.ingestionLog.findFirst({
         orderBy: { startedAt: "desc" },
       }),
@@ -121,9 +122,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           status: { in: ["degraded", "failed"] },
         },
       }),
+      prisma.sourceHealth.findMany({
+        select: {
+          source: true,
+          feedUrl: true,
+          status: true,
+          lastFetchedAt: true,
+          lastSucceededAt: true,
+          lastError: true,
+          lastLatencyMs: true,
+          failureCount: true,
+          successCount: true,
+          updatedAt: true,
+        },
+      }),
     ]);
 
     const lastJob = normalizeLastJob(lastLog, rawLastJob);
+    const sourceHealth = summarizeSourceHealth(sourceHealthRows);
 
     // Use the current log's completedAt, but fall back to the most recent
     // *completed* ingestion so "Synced" never shows "never" while a run is in progress.
@@ -146,6 +162,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalCorrelations: correlationCount,
         totalPatterns: patternCount,
         degradedSources,
+      },
+      sourceHealth: {
+        ...sourceHealth,
+        activeIssues: sourceHealth.activeIssues.map(serializeSourceHealthIssue),
+        sources: undefined,
       },
     });
   } catch {

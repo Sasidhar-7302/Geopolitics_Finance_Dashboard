@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -8,15 +8,18 @@ import {
   ZoomableGroup,
 } from "react-simple-maps";
 import Layout from "../components/layout/Layout";
-import SeverityBadge from "../components/ui/SeverityBadge";
+import HeatBadge from "../components/ui/HeatBadge";
+import SectionCard from "../components/ui/SectionCard";
 import SymbolHoverCard from "../components/ui/SymbolHoverCard";
-import { useEvents, type EventItem } from "../lib/hooks/useEvents";
+import TrustSummary from "../components/ui/TrustSummary";
 import { relativeTime } from "../lib/format";
+import { useEvents } from "../lib/hooks/useEvents";
+import { useRiskOverview } from "../lib/hooks/useRiskOverview";
+import { useWorkspace } from "../lib/hooks/useWorkspace";
 import { requireAuth } from "../lib/serverAuth";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
-/* ── Country lat/lng coordinates ── */
 const COUNTRY_COORDS: Record<string, [number, number]> = {
   US: [-98, 38],
   CA: [-106, 56],
@@ -34,7 +37,6 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   SE: [16, 62],
   CH: [8, 47],
   IL: [35, 31],
-  PS: [35, 32],
   IR: [53, 33],
   IQ: [44, 33],
   SY: [38, 35],
@@ -68,398 +70,352 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   AR: [-64, -34],
   VE: [-66, 8],
   CO: [-74, 4],
-  // Fallback regions
-  EU: [10, 50],
-  ME: [45, 28],
-  APAC: [115, 25],
-  GLOBAL: [0, -40],
 };
 
 const COUNTRY_NAMES: Record<string, string> = {
-  US: "United States", CA: "Canada", MX: "Mexico",
-  UK: "United Kingdom", DE: "Germany", FR: "France", IT: "Italy", ES: "Spain",
-  UA: "Ukraine", RU: "Russia", PL: "Poland", TR: "Turkey", NL: "Netherlands",
-  SE: "Sweden", CH: "Switzerland",
-  IL: "Israel", PS: "Palestine", IR: "Iran", IQ: "Iraq", SY: "Syria",
-  SA: "Saudi Arabia", YE: "Yemen", LB: "Lebanon", AE: "UAE",
-  CN: "China", JP: "Japan", IN: "India", KR: "South Korea", KP: "North Korea",
-  TW: "Taiwan", AU: "Australia", ID: "Indonesia", PH: "Philippines",
-  VN: "Vietnam", TH: "Thailand", SG: "Singapore", PK: "Pakistan", AF: "Afghanistan",
-  NG: "Nigeria", ZA: "South Africa", EG: "Egypt", KE: "Kenya", ET: "Ethiopia",
-  SD: "Sudan", LY: "Libya", MA: "Morocco",
-  BR: "Brazil", AR: "Argentina", VE: "Venezuela", CO: "Colombia",
-  EU: "Europe", ME: "Middle East", APAC: "Asia-Pacific", GLOBAL: "Global",
+  US: "United States",
+  CA: "Canada",
+  MX: "Mexico",
+  UK: "United Kingdom",
+  DE: "Germany",
+  FR: "France",
+  IT: "Italy",
+  ES: "Spain",
+  UA: "Ukraine",
+  RU: "Russia",
+  PL: "Poland",
+  TR: "Turkey",
+  NL: "Netherlands",
+  SE: "Sweden",
+  CH: "Switzerland",
+  IL: "Israel",
+  IR: "Iran",
+  IQ: "Iraq",
+  SY: "Syria",
+  SA: "Saudi Arabia",
+  YE: "Yemen",
+  LB: "Lebanon",
+  AE: "United Arab Emirates",
+  CN: "China",
+  JP: "Japan",
+  IN: "India",
+  KR: "South Korea",
+  KP: "North Korea",
+  TW: "Taiwan",
+  AU: "Australia",
+  ID: "Indonesia",
+  PH: "Philippines",
+  VN: "Vietnam",
+  TH: "Thailand",
+  SG: "Singapore",
+  PK: "Pakistan",
+  AF: "Afghanistan",
+  NG: "Nigeria",
+  ZA: "South Africa",
+  EG: "Egypt",
+  KE: "Kenya",
+  ET: "Ethiopia",
+  SD: "Sudan",
+  LY: "Libya",
+  MA: "Morocco",
+  BR: "Brazil",
+  AR: "Argentina",
+  VE: "Venezuela",
+  CO: "Colombia",
 };
 
-const COUNTRY_FLAGS: Record<string, string> = {
-  US: "🇺🇸", CA: "🇨🇦", MX: "🇲🇽", UK: "🇬🇧", DE: "🇩🇪", FR: "🇫🇷", IT: "🇮🇹", ES: "🇪🇸",
-  UA: "🇺🇦", RU: "🇷🇺", PL: "🇵🇱", TR: "🇹🇷", NL: "🇳🇱", SE: "🇸🇪", CH: "🇨🇭",
-  IL: "🇮🇱", PS: "🇵🇸", IR: "🇮🇷", IQ: "🇮🇶", SY: "🇸🇾", SA: "🇸🇦", YE: "🇾🇪", LB: "🇱🇧", AE: "🇦🇪",
-  CN: "🇨🇳", JP: "🇯🇵", IN: "🇮🇳", KR: "🇰🇷", KP: "🇰🇵", TW: "🇹🇼", AU: "🇦🇺", ID: "🇮🇩",
-  PH: "🇵🇭", VN: "🇻🇳", TH: "🇹🇭", SG: "🇸🇬", PK: "🇵🇰", AF: "🇦🇫",
-  NG: "🇳🇬", ZA: "🇿🇦", EG: "🇪🇬", KE: "🇰🇪", ET: "🇪🇹", SD: "🇸🇩", LY: "🇱🇾", MA: "🇲🇦",
-  BR: "🇧🇷", AR: "🇦🇷", VE: "🇻🇪", CO: "🇨🇴",
-  EU: "🇪🇺", ME: "🌍", APAC: "🌏", GLOBAL: "🌐",
-};
-
-type CountryGroup = {
-  code: string;
-  name: string;
-  region: string;
-  count: number;
-  totalSeverity: number;
-  avgSeverity: number;
-  events: EventItem[];
-};
-
-function getSeverityLevel(avg: number) {
-  if (avg >= 8) return { color: "#ef4444", bg: "rgba(239,68,68,0.3)", border: "#ef4444", pulse: "#ef444460" };
-  if (avg >= 6) return { color: "#f97316", bg: "rgba(249,115,22,0.25)", border: "#f97316", pulse: "#f9731650" };
-  if (avg >= 4) return { color: "#eab308", bg: "rgba(234,179,8,0.2)", border: "#eab308", pulse: "#eab30840" };
-  return { color: "#10b981", bg: "rgba(16,185,129,0.18)", border: "#10b981", pulse: "#10b98140" };
+function getMarkerColor(heatLevel: "critical" | "elevated" | "watch" | "calm") {
+  if (heatLevel === "critical") return "#ef4444";
+  if (heatLevel === "elevated") return "#f97316";
+  if (heatLevel === "watch") return "#fbbf24";
+  return "#10b981";
 }
 
 export default function MapView() {
-  const { events } = useEvents();
+  const { workspace, saveWorkspace } = useWorkspace();
+  const initialPreset = workspace.pinnedRegions[0] || "";
+  const [activePreset, setActivePreset] = useState(initialPreset);
+  const { riskOverview } = useRiskOverview(workspace.defaultTimeWindow);
+  const { events } = useEvents({
+    regions: activePreset ? [activePreset] : undefined,
+    timeWindow: workspace.defaultTimeWindow,
+    sort: "relevance",
+    limit: 50,
+  });
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
-  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
-  // Group events by country code
-  const countries = useMemo(() => {
-    const map = new Map<string, CountryGroup>();
-    for (const e of events) {
-      const code = e.countryCode || "GLOBAL";
-      if (!map.has(code)) {
-        map.set(code, {
-          code,
-          name: COUNTRY_NAMES[code] || code,
-          region: e.region || "Global",
-          count: 0,
-          totalSeverity: 0,
-          avgSeverity: 0,
-          events: [],
-        });
-      }
-      const g = map.get(code)!;
-      g.count++;
-      g.totalSeverity += e.severity ?? 0;
-      g.avgSeverity = g.totalSeverity / g.count;
-      g.events.push(e);
+  const visibleCountries = useMemo(() => {
+    return (riskOverview?.countries ?? []).filter((country) => COUNTRY_COORDS[country.scopeKey]);
+  }, [riskOverview?.countries]);
+
+  useEffect(() => {
+    if (!visibleCountries.length) {
+      setSelectedCountry(null);
+      return;
     }
-    return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [events]);
+    setSelectedCountry((current) =>
+      current && visibleCountries.some((country) => country.scopeKey === current)
+        ? current
+        : visibleCountries[0].scopeKey
+    );
+  }, [visibleCountries]);
 
-  const selectedData = useMemo(() => {
-    if (!selectedCountry) return null;
-    return countries.find((c) => c.code === selectedCountry) || null;
-  }, [selectedCountry, countries]);
-
-  const handleMarkerClick = useCallback((code: string) => {
-    setSelectedCountry((prev) => (prev === code ? null : code));
-  }, []);
+  const selectedCountryData = visibleCountries.find((country) => country.scopeKey === selectedCountry) || null;
+  const selectedStories = useMemo(() => {
+    if (!selectedCountry) return [];
+    return events.filter((event) => event.countryCode === selectedCountry).slice(0, 8);
+  }, [events, selectedCountry]);
+  const leadStory = selectedStories[0] || null;
+  const presets = (riskOverview?.regions ?? []).slice(0, 6);
 
   return (
     <Layout>
-      <div className="flex flex-col gap-4 xl:flex-row">
-        {/* Main map area */}
-        <div className={`flex-1 min-w-0 transition-all duration-300 ${selectedData ? "lg:mr-0" : ""}`}>
-          <div className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] p-4">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-[15px] font-semibold text-white">Global Threat Map</h2>
-                <p className="text-[11px] text-zinc-500">Click any country to view its news events and market impact</p>
-              </div>
-              <div className="flex flex-col gap-2 sm:items-end">
-                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/40 px-3 py-1.5">
-                  {[
-                    { label: "Low", color: "#10b981" },
-                    { label: "Med", color: "#eab308" },
-                    { label: "High", color: "#f97316" },
-                    { label: "Crit", color: "#ef4444" },
-                  ].map((item) => (
-                    <span key={item.label} className="flex items-center gap-1 text-[9px] text-zinc-500">
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      {item.label}
-                    </span>
-                  ))}
-                </div>
-                <span className="text-[10px] text-zinc-600">
-                  {events.length} events · {countries.length} locations
-                </span>
-              </div>
-            </div>
-
-            {/* Map */}
-            <div className="relative aspect-[1.15/1] w-full overflow-hidden rounded-lg border border-white/[0.04] bg-[#08080c] sm:aspect-[1.5/1] lg:aspect-[1.8/1] xl:aspect-[2.2/1]">
-              <ComposableMap
-                projection="geoMercator"
-                projectionConfig={{ scale: 145, center: [20, 20] }}
-                style={{ width: "100%", height: "100%" }}
+      <div className="space-y-4">
+        <SectionCard
+          title="Map Command"
+          subtitle="Choose a region, inspect the country, then move from the lead story into the full event file."
+          action={<span className="chip">{workspace.defaultTimeWindow}</span>}
+        >
+          <div className="space-y-5">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActivePreset("")}
+                className={`chip ${!activePreset ? "!border-cyan/30 !bg-cyan/10 !text-white" : ""}`}
               >
-                <ZoomableGroup>
-                  <Geographies geography={GEO_URL}>
-                    {({ geographies }) =>
-                      geographies.map((geo) => (
-                        <Geography
-                          key={geo.rsmKey}
-                          geography={geo}
-                          fill="#14141e"
-                          stroke="#222233"
-                          strokeWidth={0.3}
-                          style={{
-                            default: { outline: "none" },
-                            hover: { fill: "#1e1e30", outline: "none" },
-                            pressed: { outline: "none" },
-                          }}
-                        />
-                      ))
-                    }
-                  </Geographies>
-
-                  {/* Country markers */}
-                  {countries.map((c) => {
-                    const coords = COUNTRY_COORDS[c.code];
-                    if (!coords) return null;
-                    const severity = getSeverityLevel(c.avgSeverity);
-                    const isSelected = selectedCountry === c.code;
-                    const size = Math.max(6, Math.min(22, c.count * 0.8 + 5));
-
-                    return (
-                      <Marker
-                        key={c.code}
-                        coordinates={coords}
-                        onClick={() => handleMarkerClick(c.code)}
-                        onMouseEnter={(e) => {
-                          setHoveredCountry(c.code);
-                          setTooltipPos({ x: e.clientX, y: e.clientY });
-                        }}
-                        onMouseLeave={() => setHoveredCountry(null)}
-                      >
-                        {/* Pulse for high severity */}
-                        {c.avgSeverity >= 5 && (
-                          <circle r={size * 2.2} fill="none" stroke={severity.pulse} strokeWidth={0.4}>
-                            <animate
-                              attributeName="r"
-                              values={`${size * 1.5};${size * 2.5};${size * 1.5}`}
-                              dur="3s"
-                              repeatCount="indefinite"
-                            />
-                            <animate
-                              attributeName="opacity"
-                              values="0.5;0.05;0.5"
-                              dur="3s"
-                              repeatCount="indefinite"
-                            />
-                          </circle>
-                        )}
-                        {/* Glow */}
-                        <circle r={size * 1.4} fill={severity.bg} opacity={0.5} />
-                        {/* Main circle */}
-                        <circle
-                          r={size}
-                          fill={severity.bg}
-                          stroke={isSelected ? "#fff" : severity.border}
-                          strokeWidth={isSelected ? 2 : 1}
-                          cursor="pointer"
-                        />
-                        {/* Count text (only for larger markers) */}
-                        {size >= 10 && (
-                          <text
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            fill={severity.color}
-                            fontSize={size > 14 ? 10 : 7}
-                            fontWeight={700}
-                            fontFamily="Inter, system-ui, sans-serif"
-                            style={{ pointerEvents: "none" }}
-                          >
-                            {c.count}
-                          </text>
-                        )}
-                        {/* Country label */}
-                        <text
-                          y={size + 10}
-                          textAnchor="middle"
-                          fill={isSelected ? "#fff" : "rgba(161,161,170,0.5)"}
-                          fontSize={8}
-                          fontWeight={isSelected ? 600 : 400}
-                          fontFamily="Inter, system-ui, sans-serif"
-                          style={{ pointerEvents: "none" }}
-                        >
-                          {c.name.length > 12 ? c.code : c.name}
-                        </text>
-                      </Marker>
-                    );
-                  })}
-                </ZoomableGroup>
-              </ComposableMap>
-
-              {/* Hover tooltip */}
-              {hoveredCountry && !selectedCountry && (() => {
-                const c = countries.find((x) => x.code === hoveredCountry);
-                if (!c) return null;
-                const severity = getSeverityLevel(c.avgSeverity);
-                return (
-                  <div
-                    className="fixed z-50 rounded-xl border border-white/10 bg-[#111118]/95 p-3 shadow-2xl backdrop-blur-md"
-                    style={{ left: tooltipPos.x + 16, top: tooltipPos.y - 10, pointerEvents: "none", minWidth: 200 }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{COUNTRY_FLAGS[c.code] || "📍"}</span>
-                      <span className="text-sm font-bold text-white">{c.name}</span>
-                      <span className="ml-auto text-[10px] font-bold" style={{ color: severity.color }}>
-                        {c.count} events
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[10px] text-zinc-500">
-                      Avg severity: {c.avgSeverity.toFixed(1)} · {c.region}
-                    </p>
-                    <p className="mt-1.5 text-[10px] text-zinc-400 truncate">
-                      {c.events[0]?.title}
-                    </p>
-                    <p className="mt-0.5 text-[9px] text-emerald">Click to view all events →</p>
-                  </div>
-                );
-              })()}
+                Global
+              </button>
+              {presets.map((preset) => (
+                <button
+                  key={preset.scopeKey}
+                  type="button"
+                  onClick={() => setActivePreset(preset.scopeLabel)}
+                  className={`chip ${activePreset === preset.scopeLabel ? "!border-cyan/30 !bg-cyan/10 !text-white" : ""}`}
+                >
+                  {preset.scopeLabel}
+                </button>
+              ))}
             </div>
 
-            {/* Country quick-access grid */}
-            <div className="mt-4">
-              <p className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">Countries by event count</p>
-              <div className="flex flex-wrap gap-1.5">
-                {countries.slice(0, 20).map((c) => {
-                  const severity = getSeverityLevel(c.avgSeverity);
-                  const isSelected = selectedCountry === c.code;
-                  return (
-                    <button
-                      key={c.code}
-                      onClick={() => handleMarkerClick(c.code)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition border ${
-                        isSelected
-                          ? "bg-white/[0.08] border-white/20 text-white"
-                          : "border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <span>{COUNTRY_FLAGS[c.code] || "📍"}</span>
-                      <span>{c.name}</span>
-                      <span className="font-bold" style={{ color: severity.color }}>{c.count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Side panel - slides in when a country is selected */}
-        {selectedData && (
-          <div className="w-full shrink-0 animate-in slide-in-from-right-5 duration-200 xl:w-[420px]">
-            <div className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-[#0A0A0A] xl:sticky xl:top-4 xl:max-h-[calc(100vh-120px)]">
-              {/* Header */}
-              <div className="border-b border-white/[0.06] p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-2xl">{COUNTRY_FLAGS[selectedData.code] || "📍"}</span>
-                    <div>
-                      <h3 className="text-base font-bold text-white">{selectedData.name}</h3>
-                      <p className="text-[10px] text-zinc-500">{selectedData.region} · {selectedData.count} events</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <SeverityBadge severity={Math.round(selectedData.avgSeverity)} />
-                    <button
-                      onClick={() => setSelectedCountry(null)}
-                      className="rounded-lg border border-white/[0.08] bg-white/[0.04] p-1.5 text-zinc-400 hover:text-white hover:bg-white/[0.08] transition"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <path d="M10.5 3.5L3.5 10.5M3.5 3.5l7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                  </div>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="overflow-hidden rounded-[28px] border border-white/[0.06] bg-black/70">
+                <div className="border-b border-white/[0.05] px-5 py-4">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Geographic surface</p>
+                  <p className="mt-2 text-sm text-zinc-400">
+                    Marker size reflects story density. Color shows current heat level.
+                  </p>
                 </div>
+                <div className="aspect-[1.85/1] w-full bg-[#04080d]">
+                  <ComposableMap projection="geoMercator" projectionConfig={{ scale: 145, center: [20, 20] }} style={{ width: "100%", height: "100%" }}>
+                    <ZoomableGroup>
+                      <Geographies geography={GEO_URL}>
+                        {({ geographies }) =>
+                          geographies.map((geo) => (
+                            <Geography
+                              key={geo.rsmKey}
+                              geography={geo}
+                              fill="#0c1218"
+                              stroke="#1e2933"
+                              strokeWidth={0.35}
+                              style={{
+                                default: { outline: "none" },
+                                hover: { fill: "#14212c", outline: "none" },
+                                pressed: { outline: "none" },
+                              }}
+                            />
+                          ))
+                        }
+                      </Geographies>
+                      {visibleCountries.map((country) => {
+                        const coordinates = COUNTRY_COORDS[country.scopeKey];
+                        if (!coordinates) return null;
+                        const radius = Math.max(5, Math.min(20, country.storyCount * 1.4));
+                        const color = getMarkerColor(country.heatLevel);
+                        const isSelected = selectedCountry === country.scopeKey;
 
-                {/* Severity bar */}
-                <div className="mt-3 h-1.5 rounded-full bg-white/[0.05]">
-                  <div
-                    className="h-1.5 rounded-full transition-all duration-500"
-                    style={{
-                      backgroundColor: getSeverityLevel(selectedData.avgSeverity).color,
-                      width: `${Math.min(100, selectedData.avgSeverity * 10)}%`,
-                    }}
-                  />
-                </div>
-                <div className="mt-1 flex justify-between text-[9px] text-zinc-600">
-                  <span>Avg severity: {selectedData.avgSeverity.toFixed(1)}/10</span>
-                  <span>Last: {relativeTime(selectedData.events[0]?.publishedAt || new Date().toISOString())}</span>
+                        return (
+                          <Marker key={country.scopeKey} coordinates={coordinates} onClick={() => setSelectedCountry(country.scopeKey)}>
+                            <circle r={radius * 1.8} fill={color} opacity={0.12} />
+                            <circle r={radius} fill={color} opacity={isSelected ? 0.96 : 0.78} stroke="#f8fafc" strokeWidth={isSelected ? 1.2 : 0.4} />
+                          </Marker>
+                        );
+                      })}
+                    </ZoomableGroup>
+                  </ComposableMap>
                 </div>
               </div>
 
-              {/* Events list */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {selectedData.events.map((event) => {
-                  const correlations = event.correlations ?? [];
-                  return (
-                    <div
-                      key={event.id}
-                      className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 transition hover:bg-white/[0.04]"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 text-[9px] text-zinc-600">
-                            <span>{event.source}</span>
-                            <span>·</span>
-                            <span>{relativeTime(event.publishedAt)}</span>
-                          </div>
-                          <h4 className="mt-0.5 text-xs font-semibold text-white leading-snug">
-                            <Link href={`/event/${event.id}`} className="!text-white hover:!text-emerald transition-colors">
-                              {event.title}
-                            </Link>
-                          </h4>
-                          <p className="mt-0.5 text-[10px] text-zinc-500 line-clamp-2">{event.summary}</p>
+              <div className="space-y-4">
+                <div className="rounded-[28px] border border-white/[0.06] bg-black/60 p-5">
+                  {selectedCountryData ? (
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Country drawer</p>
+                          <h2 className="mt-2 text-2xl font-semibold text-white">
+                            {COUNTRY_NAMES[selectedCountryData.scopeKey] || selectedCountryData.scopeKey}
+                          </h2>
+                          <p className="mt-2 text-sm text-zinc-500">
+                            {selectedCountryData.storyCount} stories / support {Math.round(selectedCountryData.supportScore * 100)}%
+                          </p>
                         </div>
-                        <SeverityBadge severity={event.severity ?? 1} />
+                        <HeatBadge heatLevel={selectedCountryData.heatLevel} trend={selectedCountryData.trend} />
                       </div>
 
-                      {/* Correlated assets */}
-                      {correlations.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {correlations.slice(0, 4).map((corr) => {
-                            const isUp = corr.impactDirection !== "down";
-                            return (
-                              <SymbolHoverCard key={corr.id} symbol={corr.symbol}>
-                                <Link
-                                  href={`/stock/${corr.symbol}`}
-                                  className="inline-flex items-center gap-1 rounded border border-white/[0.05] bg-white/[0.02] px-1.5 py-0.5 text-[9px] hover:bg-white/[0.06] hover:border-white/[0.1] transition"
-                                >
-                                  <span className={`h-1 w-1 rounded-full ${isUp ? "bg-emerald" : "bg-red-400"}`} />
-                                  <span className="font-bold text-zinc-400">{corr.symbol}</span>
-                                  <span className={isUp ? "text-emerald" : "text-red-400"}>
-                                    {isUp ? "↑" : "↓"}
-                                  </span>
-                                </Link>
+                      <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">What to do next</p>
+                        <p className="mt-3 text-sm leading-6 text-zinc-400">
+                          Open the lead story first, then scan the remaining country queue for corroboration or escalation.
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              saveWorkspace({
+                                pinnedRegions: Array.from(
+                                  new Set([...workspace.pinnedRegions, selectedCountryData.region || selectedCountryData.scopeLabel])
+                                ),
+                              })
+                            }
+                            className="btn-secondary"
+                          >
+                            Pin {selectedCountryData.region || selectedCountryData.scopeLabel}
+                          </button>
+                          {leadStory ? (
+                            <Link href={`/event/${leadStory.id}`} className="btn-primary">
+                              Open lead story
+                            </Link>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {leadStory ? (
+                        <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                            Lead story / {leadStory.source} / {relativeTime(leadStory.publishedAt)}
+                          </p>
+                          <h3 className="mt-2 text-lg font-semibold leading-8 text-white">{leadStory.title}</h3>
+                          <p className="mt-3 text-sm leading-6 text-zinc-400">{leadStory.whyThisMatters || leadStory.summary}</p>
+                          <TrustSummary
+                            className="mt-4"
+                            supportingSourcesCount={leadStory.supportingSourcesCount}
+                            sourceReliability={leadStory.sourceReliability}
+                            intelligenceQuality={leadStory.intelligenceQuality}
+                            publishedAt={leadStory.publishedAt}
+                            reliability={leadStory.reliability}
+                          />
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {(leadStory.correlations ?? []).slice(0, 4).map((correlation) => (
+                              <SymbolHoverCard key={`${leadStory.id}-${correlation.symbol}`} symbol={correlation.symbol}>
+                                <span className="chip">{correlation.symbol}</span>
                               </SymbolHoverCard>
-                            );
-                          })}
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500">
+                          No lead story is available for this country in the current window.
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Footer */}
-              <div className="border-t border-white/[0.06] p-3">
-                <Link
-                  href={`/timeline?region=${encodeURIComponent(selectedData.region)}`}
-                  className="block w-full rounded-lg bg-emerald/10 py-2 text-center text-xs font-semibold !text-emerald hover:bg-emerald/15 transition"
-                >
-                  View all {selectedData.name} events on Timeline →
-                </Link>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-zinc-500">
+                      Select a marker to inspect the related country.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        )}
+        </SectionCard>
+
+        <SectionCard
+          title="Country Queue"
+          subtitle="The highest-pressure countries stay visible below the map so you can jump quickly without hunting across markers."
+        >
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="grid gap-3 md:grid-cols-2">
+              {visibleCountries.slice(0, 10).map((country) => (
+                <button
+                  key={country.scopeKey}
+                  type="button"
+                  onClick={() => setSelectedCountry(country.scopeKey)}
+                  className={`rounded-[24px] border p-4 text-left transition ${
+                    selectedCountry === country.scopeKey
+                      ? "border-cyan/30 bg-cyan/5"
+                      : "border-white/[0.06] bg-black/55 hover:border-white/[0.12]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{COUNTRY_NAMES[country.scopeKey] || country.scopeKey}</p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {country.storyCount} stories / market pressure {country.marketPressure}
+                      </p>
+                    </div>
+                    <HeatBadge heatLevel={country.heatLevel} trend={country.trend} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {country.topSymbols.slice(0, 4).map((symbol) => (
+                      <SymbolHoverCard key={`${country.scopeKey}-${symbol}`} symbol={symbol}>
+                        <span className="chip">{symbol}</span>
+                      </SymbolHoverCard>
+                    ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              {selectedStories.length > 0 ? (
+                selectedStories.map((story, index) => (
+                  <div key={story.id} className="rounded-[24px] border border-white/[0.06] bg-black/55 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex gap-4">
+                        <div className="hidden h-10 w-10 shrink-0 rounded-2xl border border-white/[0.06] bg-black/60 text-center text-sm font-semibold leading-10 text-zinc-400 sm:block">
+                          0{index + 1}
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                            {story.region} / {story.category} / {story.source}
+                          </p>
+                          <h3 className="mt-2 text-base font-semibold leading-7 text-white">{story.title}</h3>
+                        </div>
+                      </div>
+                      {story.cluster ? <HeatBadge heatLevel={story.cluster.heatLevel} trend={story.cluster.trend} /> : null}
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">{story.whyThisMatters || story.summary}</p>
+                    <TrustSummary
+                      className="mt-3"
+                      compact
+                      supportingSourcesCount={story.supportingSourcesCount}
+                      sourceReliability={story.sourceReliability}
+                      intelligenceQuality={story.intelligenceQuality}
+                      publishedAt={story.publishedAt}
+                      reliability={story.reliability}
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        {(story.correlations ?? []).slice(0, 4).map((correlation) => (
+                          <SymbolHoverCard key={`${story.id}-${correlation.symbol}`} symbol={correlation.symbol}>
+                            <span className="chip">{correlation.symbol}</span>
+                          </SymbolHoverCard>
+                        ))}
+                      </div>
+                      <Link href={`/event/${story.id}`} className="status-pill">
+                        Open file
+                      </Link>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500">
+                  No story drawer items for this country in the current filter window.
+                </div>
+              )}
+            </div>
+          </div>
+        </SectionCard>
       </div>
     </Layout>
   );

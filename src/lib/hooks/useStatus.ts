@@ -20,6 +20,32 @@ export type IngestionStatus = {
     totalPatterns: number;
     degradedSources: number;
   };
+  sourceHealth?: {
+    status: "healthy" | "degraded" | "failed" | "unknown";
+    label: string;
+    description: string;
+    healthScore: number;
+    totalFeeds: number;
+    healthyFeeds: number;
+    degradedFeeds: number;
+    failedFeeds: number;
+    successRate: number;
+    recentSuccessAt: string | null;
+    activeIssues: Array<{
+      source: string;
+      status: "healthy" | "degraded" | "failed" | "unknown";
+      label: string;
+      note: string;
+      score: number;
+      successRate: number;
+      failureCount: number;
+      successCount: number;
+      lastFetchedAt: string | null;
+      lastSucceededAt: string | null;
+      lastError: string | null;
+      lastLatencyMs: number | null;
+    }>;
+  };
   lastJob?: {
     id: string;
     kind?: string;

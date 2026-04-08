@@ -12,11 +12,11 @@ export default function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] p-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+    <section className="command-surface p-5 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.05] pb-4">
         <div>
-          <h2 className="text-[15px] font-semibold text-white">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-[11px] text-zinc-600">{subtitle}</p>}
+          <h2 className="text-base font-semibold text-white">{title}</h2>
+          {subtitle && <p className="mt-1 text-xs leading-5 text-zinc-500">{subtitle}</p>}
         </div>
         {action && <div className="flex items-center gap-2">{action}</div>}
       </div>

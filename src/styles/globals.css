@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -15,7 +15,10 @@
 
   body {
     @apply min-h-screen font-body antialiased;
-    background-color: #000000;
+    background:
+      radial-gradient(circle at top left, rgba(6, 182, 212, 0.08), transparent 24%),
+      radial-gradient(circle at top right, rgba(16, 185, 129, 0.07), transparent 20%),
+      linear-gradient(180deg, #020304 0%, #020406 36%, #010101 100%);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -62,23 +65,50 @@
 
 @layer components {
   .glass-card {
-    @apply rounded-xl border border-white/[0.06] bg-[#0A0A0A];
+    @apply rounded-[24px] border border-white/[0.06];
+    background-color: rgba(3, 4, 6, 0.92);
   }
 
   .surface-card {
-    @apply rounded-xl border border-white/[0.06] bg-[#0A0A0A];
+    @apply rounded-[24px] border border-white/[0.06];
+    background-color: rgba(3, 4, 6, 0.92);
+  }
+
+  .command-surface {
+    @apply rounded-[26px] border border-white/[0.05] shadow-card backdrop-blur-xl;
+    background-color: rgba(4, 5, 7, 0.94);
+  }
+
+  .shell-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(to right, rgba(255, 255, 255, 0.014) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: linear-gradient(180deg, rgba(255,255,255,0.5), rgba(255,255,255,0.08));
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-black/40 px-2.5 py-1 text-[11px] font-medium text-zinc-400;
   }
 
   .ghost-chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-white/[0.05] bg-white/[0.02] px-2.5 py-1 text-[11px] font-medium text-zinc-500;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/[0.05] bg-black/35 px-2.5 py-1 text-[11px] font-medium text-zinc-500;
   }
 
   .section-title {
     @apply text-[15px] font-semibold text-white;
+  }
+
+  .kicker {
+    @apply inline-flex items-center rounded-full border border-cyan/15 bg-cyan/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-black/35 px-3 py-2 text-[11px] font-medium text-zinc-400 transition hover:bg-white/[0.04];
   }
 
   .severity-badge {
@@ -106,7 +136,11 @@
   }
 
   .btn-secondary {
-    @apply rounded-lg border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.06];
+    @apply rounded-lg border border-white/[0.1] bg-black/40 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.05];
+  }
+
+  .btn-tertiary {
+    @apply rounded-lg border border-cyan/20 bg-cyan/10 px-4 py-2 text-sm font-semibold text-cyan transition hover:bg-cyan/15;
   }
 }
 

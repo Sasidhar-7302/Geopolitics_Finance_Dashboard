@@ -4,7 +4,13 @@ import { relativeTime } from "../../lib/format";
 import { useEntitlements } from "../../lib/hooks/useEntitlements";
 import { getSupabaseBrowserClient } from "../../lib/supabase-browser";
 
-export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => void }) {
+export default function Header({
+  onOpenNavigation,
+  onOpenCommandPalette,
+}: {
+  onOpenNavigation?: () => void;
+  onOpenCommandPalette?: () => void;
+}) {
   const { status } = useStatus();
   const { entitlements } = useEntitlements();
   const [signingOut, setSigningOut] = useState(false);
@@ -13,6 +19,7 @@ export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => 
   const lastSync = status?.lastIngestion?.completedAt
     ? relativeTime(status.lastIngestion.completedAt)
     : "never";
+  const feedHealthScore = Math.round((status?.sourceHealth?.healthScore ?? 0) * 100);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -25,19 +32,22 @@ export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => 
   };
 
   return (
-    <header className="rounded-xl border border-white/[0.06] bg-[#0A0A0A] px-4 py-3 sm:px-5" data-testid="header">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <header className="command-surface px-4 py-4 sm:px-5" data-testid="header">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-white">
-                GeoPulse <span className="text-gradient">Intelligence</span>
-              </h1>
-
+              <span className="kicker">Command Center</span>
+              <span className={`h-2 w-2 rounded-full ${status?.lastIngestion?.status === "success" ? "bg-emerald" : status?.lastIngestion?.status === "failed" ? "bg-red-400" : "bg-amber-400"}`} />
             </div>
-            <p className="text-[11px] text-zinc-500">
-              Geopolitical signals linked to market movements
-            </p>
+            <div>
+              <h1 className="text-lg font-semibold text-white sm:text-xl">
+                Dashboard
+              </h1>
+              <p className="text-sm text-zinc-500">
+                Track the top region, validate signal integrity, and move into research fast.
+              </p>
+            </div>
           </div>
           {onOpenNavigation ? (
             <button
@@ -53,8 +63,19 @@ export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => 
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="status-pill min-w-[210px] justify-between text-left"
+          >
+            <span className="text-zinc-400">Search pages or workspace</span>
+            <span className="rounded-full border border-white/8 px-2 py-1 text-[10px] text-zinc-500">Ctrl K</span>
+          </button>
           <span className="chip">
             {entitlements?.accessLabel || "Free"}
+          </span>
+          <span className="chip">
+            {status?.sourceHealth?.label || "Feed health unavailable"} {status?.sourceHealth ? `${feedHealthScore}/100` : ""}
           </span>
           <span className="chip">
             {isAdmin ? (
@@ -71,7 +92,7 @@ export default function Header({ onOpenNavigation }: { onOpenNavigation?: () => 
             {isAdmin ? `Synced ${lastSync}` : `Updated ${lastSync}`}
           </span>
           <button
-            className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[11px] text-zinc-500 transition hover:text-zinc-300 disabled:opacity-50"
+            className="status-pill disabled:opacity-50"
             onClick={handleSignOut}
             disabled={signingOut}
           >

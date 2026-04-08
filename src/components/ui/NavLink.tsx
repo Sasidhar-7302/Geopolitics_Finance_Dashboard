@@ -57,8 +57,8 @@ export default function NavLink({
       className={clsx(
         "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition",
         isActive
-          ? "bg-emerald/10 text-emerald"
-          : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300",
+          ? "border border-emerald/15 bg-emerald/10 text-emerald"
+          : "text-zinc-500 hover:bg-black/40 hover:text-zinc-300",
       )}
     >
       {icon && ICONS[icon] ? <span className="shrink-0">{ICONS[icon]}</span> : null}

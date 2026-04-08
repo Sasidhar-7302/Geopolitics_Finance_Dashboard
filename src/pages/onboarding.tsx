@@ -4,30 +4,30 @@ import { requireAuth } from "../lib/serverAuth";
 import PremiumOfferModal from "../components/ui/PremiumOfferModal";
 
 const TOPIC_OPTIONS = [
-  { key: "energy", label: "Energy & Oil", icon: "EN" },
-  { key: "conflict", label: "Conflicts & Wars", icon: "CF" },
-  { key: "economic", label: "Economic Policy", icon: "EC" },
-  { key: "defense", label: "Defense & Military", icon: "DF" },
-  { key: "technology", label: "Technology", icon: "TC" },
-  { key: "cyber", label: "Cybersecurity", icon: "CY" },
-  { key: "sanctions", label: "Sanctions & Tariffs", icon: "SN" },
-  { key: "political", label: "Elections & Politics", icon: "PL" },
-  { key: "healthcare", label: "Healthcare", icon: "HC" },
-  { key: "climate", label: "Climate & Environment", icon: "CL" },
-  { key: "agriculture", label: "Agriculture & Food", icon: "AG" },
-  { key: "trade", label: "Trade & Shipping", icon: "TR" },
-  { key: "threat", label: "Nuclear & Threats", icon: "NT" },
-  { key: "science", label: "Science", icon: "SC" },
+  { key: "energy", label: "Energy & Oil" },
+  { key: "conflict", label: "Conflicts & Wars" },
+  { key: "economic", label: "Economic Policy" },
+  { key: "defense", label: "Defense & Military" },
+  { key: "technology", label: "Technology" },
+  { key: "cyber", label: "Cybersecurity" },
+  { key: "sanctions", label: "Sanctions & Tariffs" },
+  { key: "political", label: "Elections & Politics" },
+  { key: "healthcare", label: "Healthcare" },
+  { key: "climate", label: "Climate & Environment" },
+  { key: "agriculture", label: "Agriculture & Food" },
+  { key: "trade", label: "Trade & Shipping" },
+  { key: "threat", label: "Nuclear & Threats" },
+  { key: "science", label: "Science" },
 ];
 
 const REGION_OPTIONS = [
-  { key: "North America", label: "North America", icon: "NA" },
-  { key: "Europe", label: "Europe", icon: "EU" },
-  { key: "Middle East", label: "Middle East", icon: "ME" },
-  { key: "Asia-Pacific", label: "Asia-Pacific", icon: "AP" },
-  { key: "Africa", label: "Africa", icon: "AF" },
-  { key: "South America", label: "South America", icon: "SA" },
-  { key: "Central Asia", label: "Central Asia", icon: "CA" },
+  { key: "North America", label: "North America" },
+  { key: "Europe", label: "Europe" },
+  { key: "Middle East", label: "Middle East" },
+  { key: "Asia-Pacific", label: "Asia-Pacific" },
+  { key: "Africa", label: "Africa" },
+  { key: "South America", label: "South America" },
+  { key: "Central Asia", label: "Central Asia" },
 ];
 
 const POPULAR_SYMBOLS = [
@@ -41,23 +41,31 @@ const POPULAR_SYMBOLS = [
   { symbol: "ITA", name: "Defense & Aerospace" },
   { symbol: "SMH", name: "Semiconductors" },
   { symbol: "FXI", name: "China Large-Cap" },
-  { symbol: "BABA", name: "Alibaba" },
   { symbol: "TSM", name: "Taiwan Semi" },
   { symbol: "VXX", name: "Volatility" },
-  { symbol: "XLF", name: "Financials" },
-  { symbol: "EEM", name: "Emerging Markets" },
-  { symbol: "WEAT", name: "Wheat" },
-  { symbol: "ICLN", name: "Clean Energy" },
-  { symbol: "URA", name: "Uranium" },
-  { symbol: "BDRY", name: "Shipping" },
-  { symbol: "BITO", name: "Bitcoin ETF" },
 ];
 
-function Badge({ children }: { children: string }) {
+function SelectionChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <span className="rounded-md border border-white/[0.06] bg-black/30 px-2 py-1 text-[10px] font-bold tracking-wide text-zinc-400">
-      {children}
-    </span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+        active
+          ? "border-cyan/30 bg-cyan/10 text-white"
+          : "border-white/[0.06] bg-black/40 text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -74,14 +82,11 @@ export default function Onboarding() {
   const [onTrial, setOnTrial] = useState(false);
 
   useEffect(() => {
-    // Fetch user's subscription info to get trial end date and user count
     const fetchTrialInfo = async () => {
       try {
         const res = await fetch("/api/me/entitlements");
         const data = await res.json();
-        if (data.trialEnd) {
-          setTrialEnd(new Date(data.trialEnd));
-        }
+        if (data.trialEnd) setTrialEnd(new Date(data.trialEnd));
         setLifetimeAccess(Boolean(data.lifetimeAccess));
         setOnTrial(Boolean(data.onTrial));
       } catch (error) {
@@ -91,8 +96,8 @@ export default function Onboarding() {
     fetchTrialInfo();
   }, []);
 
-  const toggleItem = (list: string[], setList: (v: string[]) => void, item: string) => {
-    setList(list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
+  const toggleItem = (list: string[], setList: (value: string[]) => void, item: string) => {
+    setList(list.includes(item) ? list.filter((value) => value !== item) : [...list, item]);
   };
 
   const handleFinish = async () => {
@@ -112,7 +117,6 @@ export default function Onboarding() {
         }),
       });
 
-      // Show the welcome modal when the account is on trial or has lifetime access.
       if (lifetimeAccess || onTrial) {
         setShowPremiumModal(true);
       } else {
@@ -126,205 +130,171 @@ export default function Onboarding() {
 
   return (
     <>
-    <div className="flex min-h-screen items-center justify-center bg-black p-4">
-      <div className="w-full max-w-2xl">
-        <div className="mb-8 text-center">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald/10 text-lg font-bold text-emerald">
-            G
+      <div className="shell-backdrop flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="w-full max-w-4xl space-y-6">
+          <div className="text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.06] bg-black/60 text-lg font-bold text-cyan">
+              G
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold text-white">Set up your operating surface</h1>
+            <p className="mt-2 text-sm text-zinc-500">
+              Choose what matters so the dashboard, map, and morning brief start in the right place.
+            </p>
           </div>
-          <h1 className="mt-3 text-2xl font-bold text-white">
-            Welcome to <span className="text-emerald">GeoPulse</span>
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Customize your intelligence feed. You can change this anytime in Settings.
-          </p>
-        </div>
 
-        <div className="mb-8 flex items-center justify-center gap-2">
-          {[1, 2, 3].map((current) => (
-            <div key={current} className="flex items-center gap-2">
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition ${
-                  step === current
-                    ? "bg-emerald text-black"
-                    : step > current
-                    ? "bg-emerald/20 text-emerald"
-                    : "bg-white/[0.06] text-zinc-600"
-                }`}
-              >
-                {step > current ? "OK" : current}
+          <div className="command-surface p-6 sm:p-8">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.05] pb-5">
+              <div>
+                <p className="kicker">Step {step} of 3</p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">
+                  {step === 1 ? "Choose topics" : step === 2 ? "Choose regions" : "Choose symbols"}
+                </h2>
+                <p className="mt-2 text-sm text-zinc-500">
+                  {step === 1
+                    ? "Pick the themes you want ranked highest."
+                    : step === 2
+                    ? "Select the regions you want visible first."
+                    : "Choose the assets you want linked to your feed."}
+                </p>
               </div>
-              {current < 3 && (
-                <div className={`h-0.5 w-8 rounded ${step > current ? "bg-emerald/40" : "bg-white/[0.06]"}`} />
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mb-6 flex justify-center gap-12 text-[10px] uppercase tracking-widest text-zinc-600">
-          <span className={step === 1 ? "text-emerald" : ""}>Topics</span>
-          <span className={step === 2 ? "text-emerald" : ""}>Regions</span>
-          <span className={step === 3 ? "text-emerald" : ""}>Stocks</span>
-        </div>
-
-        {step === 1 && (
-          <div>
-            <h2 className="mb-1 text-lg font-semibold text-white">What topics interest you?</h2>
-            <p className="mb-5 text-xs text-zinc-500">Select 3 or more to personalize your feed.</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {TOPIC_OPTIONS.map(({ key, label, icon }) => {
-                const active = categories.includes(key);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => toggleItem(categories, setCategories, key)}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3.5 text-left transition ${
-                      active
-                        ? "border-emerald/40 bg-emerald/10 text-white"
-                        : "border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
+              <div className="flex items-center gap-2">
+                {[1, 2, 3].map((current) => (
+                  <div
+                    key={current}
+                    className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold ${
+                      step === current
+                        ? "bg-cyan text-black"
+                        : step > current
+                        ? "bg-cyan/15 text-cyan"
+                        : "border border-white/[0.06] bg-black/40 text-zinc-500"
                     }`}
                   >
-                    <Badge>{icon}</Badge>
-                    <span className="text-sm font-medium">{label}</span>
-                    {active && <span className="ml-auto text-emerald">OK</span>}
-                  </button>
-                );
-              })}
+                    {current}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="mt-6 flex items-center justify-between">
-              <span className="text-xs text-zinc-600">{categories.length} selected</span>
-              <button
-                onClick={() => setStep(2)}
-                disabled={categories.length < 3}
-                className={`rounded-lg px-6 py-2.5 text-sm font-semibold transition ${
-                  categories.length >= 3
-                    ? "bg-emerald text-black hover:bg-emerald/90"
-                    : "bg-white/[0.06] text-zinc-600 cursor-not-allowed"
-                }`}
-              >
-                Continue -&gt;
-              </button>
-            </div>
-          </div>
-        )}
 
-        {step === 2 && (
-          <div>
-            <h2 className="mb-1 text-lg font-semibold text-white">Which regions matter to you?</h2>
-            <p className="mb-5 text-xs text-zinc-500">Select the regions you want to monitor.</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {REGION_OPTIONS.map(({ key, label, icon }) => {
-                const active = regions.includes(key);
-                return (
+            {step === 1 ? (
+              <div className="space-y-6">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {TOPIC_OPTIONS.map((option) => (
+                    <SelectionChip
+                      key={option.key}
+                      active={categories.includes(option.key)}
+                      label={option.label}
+                      onClick={() => toggleItem(categories, setCategories, option.key)}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-zinc-500">{categories.length} topics selected</p>
                   <button
-                    key={key}
-                    onClick={() => toggleItem(regions, setRegions, key)}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3.5 text-left transition ${
-                      active
-                        ? "border-emerald/40 bg-emerald/10 text-white"
-                        : "border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
+                    type="button"
+                    onClick={() => setStep(2)}
+                    disabled={categories.length < 3}
+                    className={`rounded-lg px-6 py-2.5 text-sm font-semibold transition ${
+                      categories.length >= 3 ? "bg-cyan text-black hover:bg-cyan/90" : "bg-white/[0.06] text-zinc-600"
                     }`}
                   >
-                    <Badge>{icon}</Badge>
-                    <span className="text-sm font-medium">{label}</span>
-                    {active && <span className="ml-auto text-emerald">OK</span>}
+                    Continue
                   </button>
-                );
-              })}
-            </div>
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={() => setStep(1)}
-                className="rounded-lg border border-white/[0.06] px-4 py-2 text-sm text-zinc-400 hover:bg-white/[0.04] transition"
-              >
-                &lt;- Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                disabled={regions.length === 0}
-                className={`rounded-lg px-6 py-2.5 text-sm font-semibold transition ${
-                  regions.length > 0
-                    ? "bg-emerald text-black hover:bg-emerald/90"
-                    : "bg-white/[0.06] text-zinc-600 cursor-not-allowed"
-                }`}
-              >
-                Continue -&gt;
-              </button>
-            </div>
-          </div>
-        )}
+                </div>
+              </div>
+            ) : null}
 
-        {step === 3 && (
-          <div>
-            <h2 className="mb-1 text-lg font-semibold text-white">What stocks do you follow?</h2>
-            <p className="mb-5 text-xs text-zinc-500">Select the ETFs and stocks you want to track.</p>
-            <div className="mb-5 rounded-xl border border-emerald/15 bg-emerald/5 p-4 text-[11px] leading-5 text-zinc-400">
-              <p className="font-semibold text-white">What happens next</p>
-              <p className="mt-1">You will land on the dashboard with your feed tuned to these interests. The best first check-in is Morning Brief, then one saved view for the region or sector you care about most.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {POPULAR_SYMBOLS.map(({ symbol, name }) => {
-                const active = symbols.includes(symbol);
-                return (
+            {step === 2 ? (
+              <div className="space-y-6">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {REGION_OPTIONS.map((option) => (
+                    <SelectionChip
+                      key={option.key}
+                      active={regions.includes(option.key)}
+                      label={option.label}
+                      onClick={() => toggleItem(regions, setRegions, option.key)}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <button type="button" onClick={() => setStep(1)} className="btn-secondary">
+                    Back
+                  </button>
                   <button
-                    key={symbol}
-                    onClick={() => toggleItem(symbols, setSymbols, symbol)}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      active
-                        ? "border-emerald/40 bg-emerald/10"
-                        : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]"
+                    type="button"
+                    onClick={() => setStep(3)}
+                    disabled={regions.length === 0}
+                    className={`rounded-lg px-6 py-2.5 text-sm font-semibold transition ${
+                      regions.length > 0 ? "bg-cyan text-black hover:bg-cyan/90" : "bg-white/[0.06] text-zinc-600"
                     }`}
                   >
-                    <span className={`text-sm font-bold ${active ? "text-white" : "text-zinc-400"}`}>
-                      {symbol}
-                    </span>
-                    <p className={`mt-0.5 text-[10px] ${active ? "text-emerald/70" : "text-zinc-600"}`}>
-                      {name}
-                    </p>
+                    Continue
                   </button>
-                );
-              })}
-            </div>
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={() => setStep(2)}
-                className="rounded-lg border border-white/[0.06] px-4 py-2 text-sm text-zinc-400 hover:bg-white/[0.04] transition"
-              >
-                &lt;- Back
-              </button>
-              <button
-                onClick={handleFinish}
-                disabled={saving || symbols.length === 0}
-                className={`rounded-lg px-8 py-2.5 text-sm font-semibold transition ${
-                  symbols.length > 0 && !saving
-                    ? "bg-emerald text-black hover:bg-emerald/90"
-                    : "bg-white/[0.06] text-zinc-600 cursor-not-allowed"
-                }`}
-              >
-                {saving ? "Saving..." : "Start Exploring -&gt;"}
-              </button>
-            </div>
-          </div>
-        )}
+                </div>
+              </div>
+            ) : null}
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="text-xs text-zinc-600 hover:text-zinc-400 transition"
-          >
-            Skip for now - I&apos;ll customize later
-          </button>
+            {step === 3 ? (
+              <div className="space-y-6">
+                <div className="rounded-[22px] border border-white/[0.06] bg-black/55 p-4 text-sm leading-6 text-zinc-400">
+                  The first view after setup will prioritize these symbols across your dashboard, map drawer, and briefing.
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {POPULAR_SYMBOLS.map((item) => (
+                    <button
+                      key={item.symbol}
+                      type="button"
+                      onClick={() => toggleItem(symbols, setSymbols, item.symbol)}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        symbols.includes(item.symbol)
+                          ? "border-cyan/30 bg-cyan/10"
+                          : "border-white/[0.06] bg-black/40 hover:bg-white/[0.04]"
+                      }`}
+                    >
+                      <p className={`text-sm font-semibold ${symbols.includes(item.symbol) ? "text-white" : "text-zinc-300"}`}>
+                        {item.symbol}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">{item.name}</p>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <button type="button" onClick={() => setStep(2)} className="btn-secondary">
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFinish}
+                    disabled={saving || symbols.length === 0}
+                    className={`rounded-lg px-8 py-2.5 text-sm font-semibold transition ${
+                      symbols.length > 0 && !saving ? "bg-cyan text-black hover:bg-cyan/90" : "bg-white/[0.06] text-zinc-600"
+                    }`}
+                  >
+                    {saving ? "Saving..." : "Open dashboard"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="text-sm text-zinc-500 transition hover:text-zinc-300"
+            >
+              Skip for now
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-      {/* Premium Offer Modal */}
-      {showPremiumModal && (
+
+      {showPremiumModal ? (
         <PremiumOfferModal
           trialEndDate={trialEnd}
           lifetimeAccess={lifetimeAccess}
           onSkip={() => router.push("/dashboard")}
         />
-      )}
+      ) : null}
     </>
   );
 }

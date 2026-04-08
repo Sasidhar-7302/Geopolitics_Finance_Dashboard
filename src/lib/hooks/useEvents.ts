@@ -1,4 +1,6 @@
 import useSWR from "swr";
+import type { NarrativeCluster } from "./useRiskOverview";
+import type { EventReliability } from "../reliability";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -32,7 +34,9 @@ export type EventItem = {
   supportingSourcesCount?: number;
   sourceReliability?: number;
   isPremiumInsight?: boolean;
+  cluster?: NarrativeCluster | null;
   correlations?: CorrelationItem[];
+  reliability?: EventReliability;
 };
 
 export type EventQuery = {

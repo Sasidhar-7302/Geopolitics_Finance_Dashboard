@@ -1,758 +1,555 @@
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/router";
+import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/layout/Layout";
-import MetricCard from "../components/ui/MetricCard";
+import HeatBadge from "../components/ui/HeatBadge";
+import SignalOverview from "../components/ui/SignalOverview";
 import SectionCard from "../components/ui/SectionCard";
-import StockTicker from "../components/ui/StockTicker";
-import EventMarketPanel from "../components/dashboard/EventMarketPanel";
-import PatternInsightsCard from "../components/dashboard/PatternInsightsCard";
-import TopMoversCard from "../components/dashboard/TopMoversCard";
-import { categorizeEvent, CATEGORY_RULES } from "../lib/intelligence";
-import { useEvents, type EventItem } from "../lib/hooks/useEvents";
-import { useWatchlists } from "../lib/hooks/useWatchlists";
-import { useQuotes, type Quote } from "../lib/hooks/useQuotes";
-import { useStatus } from "../lib/hooks/useStatus";
-import { usePreferences } from "../lib/hooks/usePreferences";
-import { useSavedFilters } from "../lib/hooks/useSavedFilters";
+import SymbolHoverCard from "../components/ui/SymbolHoverCard";
+import TrustSummary from "../components/ui/TrustSummary";
+import { formatCurrency, formatPct, relativeTime } from "../lib/format";
 import { useEntitlements } from "../lib/hooks/useEntitlements";
-import { getMarketFreshnessLabel, getMarketProviderLabel } from "../lib/marketPresentation";
+import { useEvents } from "../lib/hooks/useEvents";
+import { usePreferences } from "../lib/hooks/usePreferences";
+import { useQuotes } from "../lib/hooks/useQuotes";
+import { useRiskOverview } from "../lib/hooks/useRiskOverview";
+import { useSavedFilters } from "../lib/hooks/useSavedFilters";
+import { useStatus } from "../lib/hooks/useStatus";
+import { useWatchlists } from "../lib/hooks/useWatchlists";
+import { useWorkspace } from "../lib/hooks/useWorkspace";
 import { requireAuth } from "../lib/serverAuth";
+import type { WorkspacePanelKey } from "../lib/workspace";
 
-const DEFAULT_WATCHLIST_SYMBOLS = ["SPY", "QQQ", "GLD", "XLE", "TLT", "ITA", "USO", "NVDA"];
+const TIME_WINDOWS = ["6h", "24h", "72h", "7d"] as const;
+const SORT_OPTIONS = ["relevance", "newest", "severity", "support"] as const;
+const blockClass = "rounded-[24px] border border-white/[0.05] bg-black/55 p-4";
 
-const TIME_WINDOWS = [
-  { key: "all", label: "All time" },
-  { key: "6h", label: "6h" },
-  { key: "24h", label: "24h" },
-  { key: "3d", label: "3d" },
-  { key: "7d", label: "7d" },
-] as const;
-
-const MARKET_DIRECTION_OPTIONS = [
-  { key: "all", label: "All reactions" },
-  { key: "up", label: "Mostly up" },
-  { key: "down", label: "Mostly down" },
-  { key: "mixed", label: "Mixed" },
-  { key: "none", label: "No live move" },
-] as const;
-
-const SORT_OPTIONS = [
-  { key: "relevance", label: "Most relevant" },
-  { key: "newest", label: "Newest first" },
-  { key: "severity", label: "Highest severity" },
-  { key: "support", label: "Most confirmed" },
-] as const;
-
-const SEVERITY_OPTIONS = [
-  { key: "all", label: "All severity" },
-  { key: "5", label: "Severity 5+" },
-  { key: "7", label: "Severity 7+" },
-  { key: "9", label: "Severity 9+" },
-] as const;
-
-type TimeWindowKey = (typeof TIME_WINDOWS)[number]["key"];
-type MarketDirectionKey = (typeof MARKET_DIRECTION_OPTIONS)[number]["key"];
-type SortKey = (typeof SORT_OPTIONS)[number]["key"];
-
-function getEventMarketDirection(event: EventItem, quoteMap: Map<string, Quote>): Exclude<MarketDirectionKey, "all"> {
-  const correlations = event.correlations ?? [];
-  if (correlations.length === 0) return "none";
-
-  let hasUp = false;
-  let hasDown = false;
-
-  for (const corr of correlations) {
-    const liveChange = quoteMap.get(corr.symbol)?.changePct;
-
-    if (typeof liveChange === "number" && liveChange !== 0) {
-      if (liveChange > 0) hasUp = true;
-      if (liveChange < 0) hasDown = true;
-      continue;
-    }
-
-    if (corr.impactDirection === "up") hasUp = true;
-    if (corr.impactDirection === "down") hasDown = true;
-  }
-
-  if (hasUp && hasDown) return "mixed";
-  if (hasUp) return "up";
-  if (hasDown) return "down";
-  return "none";
-}
-
-function getEventStrongestMove(event: EventItem, quoteMap: Map<string, Quote>) {
-  return (event.correlations ?? []).reduce((maxMove, corr) => {
-    const liveChange = quoteMap.get(corr.symbol)?.changePct;
-    const move = typeof liveChange === "number" && liveChange !== 0
-      ? Math.abs(liveChange)
-      : Math.abs(corr.impactMagnitude);
-
-    return Math.max(maxMove, move);
-  }, 0);
+function DashboardPanel({
+  panelKey,
+  title,
+  subtitle,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  panelKey: WorkspacePanelKey;
+  title: string;
+  subtitle: string;
+  collapsed: boolean;
+  onToggle: (panelKey: WorkspacePanelKey) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <SectionCard
+      title={title}
+      subtitle={subtitle}
+      action={
+        <button type="button" onClick={() => onToggle(panelKey)} className="status-pill">
+          {collapsed ? "Expand" : "Collapse"}
+        </button>
+      }
+    >
+      {collapsed ? (
+        <div className="rounded-[22px] border border-dashed border-white/[0.08] bg-black/30 px-4 py-8 text-center text-sm text-zinc-500">
+          {title} is collapsed for this workspace.
+        </div>
+      ) : children}
+    </SectionCard>
+  );
 }
 
 export default function Dashboard() {
-  const { watchlists } = useWatchlists();
-  const { status } = useStatus();
-  const { preferences, isLoading: prefsLoading } = usePreferences();
-  const { savedFilters, saveFilter, removeFilter } = useSavedFilters();
+  const router = useRouter();
   const { entitlements } = useEntitlements();
-  const isAdmin = Boolean(entitlements?.isAdmin);
+  const { status } = useStatus();
+  const { preferences } = usePreferences();
+  const { watchlists } = useWatchlists();
+  const { workspace, saveWorkspace } = useWorkspace();
+  const { savedFilters, saveFilter } = useSavedFilters();
 
-  const [activeCategory, setActiveCategory] = useState("for-you");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedRegion, setSelectedRegion] = useState("all");
-  const [selectedSeverity, setSelectedSeverity] = useState("all");
-  const [selectedTimeWindow, setSelectedTimeWindow] = useState<TimeWindowKey>("24h");
-  const [selectedMarketDirection, setSelectedMarketDirection] = useState<MarketDirectionKey>("all");
-  const [selectedSort, setSelectedSort] = useState<SortKey>("relevance");
-  const [saveViewName, setSaveViewName] = useState("");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const queryText = typeof router.query.q === "string" ? router.query.q : "";
+  const selectedRegion = typeof router.query.region === "string" ? router.query.region : workspace.pinnedRegions[0] || "";
+  const selectedSymbol = typeof router.query.symbol === "string" ? router.query.symbol.toUpperCase() : workspace.pinnedSymbols[0] || "";
+  const timeWindow = typeof router.query.window === "string" ? router.query.window : workspace.defaultTimeWindow;
+  const sort = typeof router.query.sort === "string" ? router.query.sort : workspace.defaultSort;
 
-  const hasPreferences = preferences.categories.length > 0 || preferences.regions.length > 0 || preferences.symbols.length > 0;
+  const { riskOverview } = useRiskOverview(timeWindow);
+  const { events } = useEvents({
+    q: queryText || undefined,
+    regions: selectedRegion ? [selectedRegion] : undefined,
+    symbols: selectedSymbol ? [selectedSymbol] : undefined,
+    timeWindow,
+    sort: SORT_OPTIONS.includes(sort as (typeof SORT_OPTIONS)[number]) ? (sort as (typeof SORT_OPTIONS)[number]) : "relevance",
+    limit: 24,
+  });
 
-  const eventQuery = useMemo(() => ({
-    q: searchQuery.trim() || undefined,
-    regions: selectedRegion !== "all" ? [selectedRegion] : undefined,
-    categories: activeCategory !== "all" && activeCategory !== "for-you" ? [activeCategory] : undefined,
-    direction: selectedMarketDirection,
-    severityMin: selectedSeverity === "all" ? 0 : Number(selectedSeverity),
-    timeWindow: selectedTimeWindow,
-    sort: selectedSort,
-    limit: activeCategory === "for-you" ? 40 : 20,
-  }), [activeCategory, searchQuery, selectedMarketDirection, selectedRegion, selectedSeverity, selectedSort, selectedTimeWindow]);
+  const watchlistSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    watchlists.forEach((watchlist) => watchlist.items.forEach((item) => symbols.add(item.symbol)));
+    workspace.pinnedSymbols.forEach((symbol) => symbols.add(symbol));
+    riskOverview?.radar.topSymbols.forEach((symbol) => symbols.add(symbol));
+    return Array.from(symbols).slice(0, 12);
+  }, [riskOverview?.radar.topSymbols, watchlists, workspace.pinnedSymbols]);
 
-  const { events: fetchedEvents, isLoading, pagination } = useEvents(eventQuery);
-
-  const allSymbols = useMemo(() => {
-    const symbols = new Set<string>(DEFAULT_WATCHLIST_SYMBOLS);
-
-    if (watchlists[0]?.items) {
-      watchlists[0].items.forEach((item) => symbols.add(item.symbol));
-    }
-
-    preferences.symbols.forEach((symbol) => symbols.add(symbol));
-    fetchedEvents.forEach((event) => event.correlations?.forEach((corr) => symbols.add(corr.symbol)));
-
-    return Array.from(symbols);
-  }, [fetchedEvents, preferences.symbols, watchlists]);
-
-  const { quotes, meta: quoteMeta } = useQuotes(allSymbols);
-
+  const { quotes } = useQuotes(watchlistSymbols);
   const quoteMap = useMemo(() => {
-    const map = new Map<string, Quote>();
+    const map = new Map<string, (typeof quotes)[number]>();
     quotes.forEach((quote) => map.set(quote.symbol, quote));
     return map;
   }, [quotes]);
 
-  const events = useMemo(() => {
-    if (activeCategory !== "for-you" || !hasPreferences) return fetchedEvents;
+  const filteredStories = useMemo(() => {
+    return events.filter((event) => !selectedSymbol || (event.correlations ?? []).some((corr) => corr.symbol === selectedSymbol));
+  }, [events, selectedSymbol]);
 
-    return fetchedEvents
-      .filter((event) => {
-        if (preferences.categories.includes(event.category || categorizeEvent(event.title, event.summary))) return true;
-        if (preferences.regions.includes(event.region)) return true;
-        if (event.correlations?.some((corr) => preferences.symbols.includes(corr.symbol))) return true;
-        return false;
-      })
-      .sort((a, b) => {
-        const aScore = (a.relevanceScore ?? 0) + (a.supportingSourcesCount ?? 0) + ((a.intelligenceQuality ?? 0.5) * 2);
-        const bScore = (b.relevanceScore ?? 0) + (b.supportingSourcesCount ?? 0) + ((b.intelligenceQuality ?? 0.5) * 2);
-        return bScore - aScore;
-      });
-  }, [activeCategory, fetchedEvents, hasPreferences, preferences]);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-  const matchingEventsCount = activeCategory === "for-you" ? events.length : (pagination?.total ?? events.length);
-
-  const availableRegions = useMemo(() => {
-    return Array.from(new Set(fetchedEvents.map((event) => event.region).filter(Boolean))).sort();
-  }, [fetchedEvents]);
-
-  const summary = useMemo(() => {
-    const now = Date.now();
-    const last24h = events.filter((event) => now - new Date(event.publishedAt).getTime() < 24 * 60 * 60 * 1000);
-    const highSeverity = events.filter((event) => (event.severity ?? 0) >= 7);
-    const correlationCount = events.reduce((total, event) => total + (event.correlations?.length ?? 0), 0);
-
-    const categoryCounts: Record<string, number> = {};
-    for (const event of events) {
-      const category = event.category || categorizeEvent(event.title, event.summary);
-      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+  useEffect(() => {
+    if (!filteredStories.length) {
+      setSelectedEventId(null);
+      return;
     }
+    setSelectedEventId((current) => (current && filteredStories.some((event) => event.id === current) ? current : filteredStories[0].id));
+  }, [filteredStories]);
 
-    return {
-      last24h,
-      highSeverity,
-      correlationCount,
-      categoryCounts,
-    };
-  }, [events]);
+  const selectedEvent = filteredStories.find((event) => event.id === selectedEventId) || filteredStories[0] || null;
+  const topRegion = riskOverview?.regions[0] || null;
 
-  const topRegions = useMemo(() => {
-    const counts = events.reduce<Record<string, number>>((acc, event) => {
-      const key = event.region || "Global";
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-
-    return Object.entries(counts)
-      .map(([region, count]) => ({ region, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6);
-  }, [events]);
-
-  const maxRegionCount = Math.max(...topRegions.map((item) => item.count), 1);
-  const tickerItems = quotes.filter((quote) => quote.price > 0);
-
-  const filterSummary = useMemo(() => {
-    const summaryParts: string[] = [];
-    const timeLabel = TIME_WINDOWS.find((item) => item.key === selectedTimeWindow)?.label;
-    const directionLabel = MARKET_DIRECTION_OPTIONS.find((item) => item.key === selectedMarketDirection)?.label;
-    const sortLabel = SORT_OPTIONS.find((item) => item.key === selectedSort)?.label;
-
-    if (activeCategory === "for-you") summaryParts.push("Feed: For You");
-    if (activeCategory !== "all" && activeCategory !== "for-you") {
-      summaryParts.push(`Category: ${CATEGORY_RULES.find((item) => item.key === activeCategory)?.label || activeCategory}`);
-    }
-    if (selectedTimeWindow !== "all" && timeLabel) summaryParts.push(`Published: ${timeLabel}`);
-    if (selectedRegion !== "all") summaryParts.push(`Region: ${selectedRegion}`);
-    if (selectedSeverity !== "all") summaryParts.push(`Severity: ${selectedSeverity}+`);
-    if (selectedMarketDirection !== "all" && directionLabel) summaryParts.push(`Reaction: ${directionLabel}`);
-    if (searchQuery.trim()) summaryParts.push(`Search: "${searchQuery.trim()}"`);
-    if (selectedSort !== "relevance" && sortLabel) summaryParts.push(`Sort: ${sortLabel}`);
-
-    return summaryParts;
-  }, [activeCategory, searchQuery, selectedMarketDirection, selectedRegion, selectedSeverity, selectedSort, selectedTimeWindow]);
-
-  const emptyState = useMemo(() => {
-    if (matchingEventsCount > 0) return undefined;
-
-    if (activeCategory === "for-you" && hasPreferences) {
-      return {
-        title: "No stories match your current interests right now.",
-        hint: "Broaden your topics or regions in Settings, or switch to All Events.",
-      };
-    }
-
-    return {
-      title: "No stories match the current dashboard view.",
-      hint: "Reset filters or widen the time window.",
-    };
-  }, [activeCategory, hasPreferences, matchingEventsCount]);
-
-  const clearDashboardFilters = () => {
-    setSearchQuery("");
-    setSelectedRegion("all");
-    setSelectedSeverity("all");
-    setSelectedTimeWindow("24h");
-    setSelectedMarketDirection("all");
-    setSelectedSort("relevance");
-    setActiveCategory(hasPreferences ? "for-you" : "all");
+  const updateRoute = (patch: Record<string, string | undefined>) => {
+    const nextQuery = { ...router.query, ...patch };
+    Object.keys(nextQuery).forEach((key) => {
+      if (!nextQuery[key]) delete nextQuery[key];
+    });
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   };
 
-  const applySavedView = (view: {
-    query?: string | null;
-    regions: string[];
-    categories: string[];
-    direction: string;
-    severityMin: number;
-    timeWindow: string;
-    sortKey: string;
-  }) => {
-    setSearchQuery(view.query || "");
-    setSelectedRegion(view.regions[0] || "all");
-    setActiveCategory(view.categories[0] || "all");
-    setSelectedMarketDirection((view.direction as MarketDirectionKey) || "all");
-    setSelectedSeverity(view.severityMin > 0 ? String(view.severityMin) : "all");
-    setSelectedTimeWindow((view.timeWindow as TimeWindowKey) || "24h");
-    setSelectedSort((view.sortKey as SortKey) || "relevance");
+  const togglePinnedRegion = async (region: string) => {
+    const nextRegions = workspace.pinnedRegions.includes(region)
+      ? workspace.pinnedRegions.filter((item) => item !== region)
+      : [...workspace.pinnedRegions, region];
+    await saveWorkspace({ pinnedRegions: nextRegions });
   };
 
-  const handleSaveCurrentView = async () => {
-    if (!saveViewName.trim()) return;
-
-    setSaveState("saving");
-    try {
-      const response = await saveFilter({
-        name: saveViewName.trim(),
-        query: searchQuery.trim() || null,
-        regions: selectedRegion !== "all" ? [selectedRegion] : [],
-        categories: activeCategory !== "all" ? [activeCategory] : [],
-        symbols: [],
-        direction: selectedMarketDirection,
-        severityMin: selectedSeverity === "all" ? 0 : Number(selectedSeverity),
-        timeWindow: selectedTimeWindow,
-        sortKey: selectedSort,
-        isPinned: false,
-      });
-
-      if (response?.error) {
-        throw new Error(response.error);
-      }
-
-      setSaveViewName("");
-      setSaveState("done");
-      setTimeout(() => setSaveState("idle"), 1600);
-    } catch {
-      setSaveState("error");
-    }
+  const togglePinnedSymbol = async (symbol: string) => {
+    const nextSymbols = workspace.pinnedSymbols.includes(symbol)
+      ? workspace.pinnedSymbols.filter((item) => item !== symbol)
+      : [...workspace.pinnedSymbols, symbol];
+    await saveWorkspace({ pinnedSymbols: nextSymbols });
   };
 
-  const hasFilterConstraints = Boolean(searchQuery.trim())
-    || selectedRegion !== "all"
-    || selectedSeverity !== "all"
-    || selectedTimeWindow !== "24h"
-    || selectedMarketDirection !== "all"
-    || activeCategory !== (hasPreferences ? "for-you" : "all");
+  const togglePanel = async (panelKey: WorkspacePanelKey) => {
+    const collapsedPanels = workspace.collapsedPanels.includes(panelKey)
+      ? workspace.collapsedPanels.filter((item) => item !== panelKey)
+      : [...workspace.collapsedPanels, panelKey];
+    await saveWorkspace({ collapsedPanels });
+  };
 
-  const quoteStatusLabel = getMarketFreshnessLabel(quoteMeta?.freshness);
-  const quoteProviderLabel = getMarketProviderLabel(quoteMeta?.provider);
+  const saveCurrentView = async () => {
+    await saveFilter({
+      name: `${selectedRegion || "Global"} ${timeWindow} view`,
+      query: queryText || null,
+      regions: selectedRegion ? [selectedRegion] : [],
+      categories: [],
+      symbols: selectedSymbol ? [selectedSymbol] : [],
+      direction: "all",
+      severityMin: 0,
+      timeWindow,
+      sortKey: sort,
+      isPinned: false,
+    });
+  };
+
+  const quickScopeItems = [
+    ...workspace.pinnedRegions.map((region) => ({ key: `region-${region}`, label: region, patch: { region } })),
+    ...workspace.pinnedSymbols.map((symbol) => ({ key: `symbol-${symbol}`, label: symbol, patch: { symbol } })),
+    ...savedFilters.slice(0, 3).map((filter) => ({
+      key: filter.id,
+      label: filter.name,
+      patch: {
+        q: filter.query || undefined,
+        region: filter.regions[0] || undefined,
+        symbol: filter.symbols[0] || undefined,
+        window: filter.timeWindow || undefined,
+        sort: filter.sortKey || undefined,
+      },
+    })),
+  ];
 
   return (
     <Layout>
-      <StockTicker items={tickerItems} />
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          label="Events (24h)"
-          value={(status?.stats?.recentEvents24h ?? summary.last24h.length).toString()}
-          trend={`${status?.stats?.totalEvents ?? events.length} total monitored`}
-          sparkline={[18, 22, 20, 26, 28, 31, 29]}
-        />
-        <MetricCard
-          label="High Severity"
-          value={summary.highSeverity.length.toString()}
-          trend="Severity 7+ signals"
-          tone="coral"
-          sparkline={[3, 4, 6, 5, 7, 8, 7]}
-        />
-        <MetricCard
-          label="Market Links"
-          value={summary.correlationCount.toString()}
-          trend="Event-asset correlations"
-          tone="amber"
-          sparkline={[12, 15, 18, 16, 22, 25, 24]}
-        />
-        {isAdmin ? (
-          <MetricCard
-            label="Source Health"
-            value={(status?.stats?.degradedSources ?? 0).toString()}
-            trend="Feeds needing attention"
-            tone="ocean"
-            sparkline={[1, 0, 1, 2, 1, 0, 1]}
-          />
-        ) : (
-          <MetricCard
-            label="Saved Views"
-            value={savedFilters.length.toString()}
-            trend={entitlements?.limits?.savedViews === null ? "Unlimited capacity" : `${entitlements?.limits?.savedViews ?? 3} included`}
-            tone="ocean"
-            sparkline={[0, 1, 1, 2, 2, 3, 3]}
-          />
-        )}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-        <SectionCard
-          title="Risk Radar"
-          subtitle={`Understand what happened, why markets care, and what to watch next. ${matchingEventsCount} matching stories.`}
-          action={
-            <>
-              <span className="ghost-chip border border-white/[0.08] bg-white/[0.03]">
-                Market data: {quoteStatusLabel}
-              </span>
-              {hasFilterConstraints && (
-                <button onClick={clearDashboardFilters} className="ghost-chip hover:bg-white/[0.06]">
-                  Reset filters
-                </button>
-              )}
-              <Link href="/timeline" className="ghost-chip hover:bg-white/[0.06]">
-                Timeline
-              </Link>
-            </>
-          }
-        >
-          <div className="mb-3 flex flex-wrap gap-1.5 border-b border-white/[0.06] pb-3">
-            {hasPreferences && (
-              <button
-                onClick={() => setActiveCategory("for-you")}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-                  activeCategory === "for-you"
-                    ? "border border-emerald/30 bg-emerald/15 text-emerald"
-                    : "border border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
-                }`}
-              >
-                For You
-              </button>
-            )}
-            <button
-              onClick={() => setActiveCategory("all")}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-                activeCategory === "all"
-                  ? "border border-emerald/30 bg-emerald/15 text-emerald"
-                  : "border border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
-              }`}
-            >
-              All Events
-            </button>
-            {CATEGORY_RULES.map(({ key, label }) => {
-              const count = summary.categoryCounts[key] ?? 0;
-              if (count === 0) return null;
-
-              const isActive = activeCategory === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setActiveCategory(key)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-                    isActive
-                      ? "border border-emerald/30 bg-emerald/15 text-emerald"
-                      : "border border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
-                  }`}
-                >
-                  {label}
-                  <span className={`text-[10px] ${isActive ? "text-emerald/70" : "text-zinc-600"}`}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mb-4 space-y-3 border-b border-white/[0.06] pb-4">
-            <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-              <input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search stories, sources, regions, or symbols..."
-                className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald/30 focus:outline-none xl:max-w-sm"
-              />
-
-              <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
-                <select
-                  value={selectedRegion}
-                  onChange={(event) => setSelectedRegion(event.target.value)}
-                  className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200"
-                >
-                  <option value="all">All regions</option>
-                  {availableRegions.map((region) => (
-                    <option key={region} value={region}>
-                      {region}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedMarketDirection}
-                  onChange={(event) => setSelectedMarketDirection(event.target.value as MarketDirectionKey)}
-                  className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200"
-                >
-                  {MARKET_DIRECTION_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedSeverity}
-                  onChange={(event) => setSelectedSeverity(event.target.value)}
-                  className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200"
-                >
-                  {SEVERITY_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedSort}
-                  onChange={(event) => setSelectedSort(event.target.value as SortKey)}
-                  className="rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200"
-                >
-                  {SORT_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-                Published
-              </span>
-              {TIME_WINDOWS.map((window) => {
-                const isActive = selectedTimeWindow === window.key;
-                return (
-                  <button
-                    key={window.key}
-                    onClick={() => setSelectedTimeWindow(window.key)}
-                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition border ${
-                      isActive
-                        ? "border-emerald/30 bg-emerald/15 text-emerald"
-                        : "border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
-                    }`}
-                  >
-                    {window.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-1.5">
-                {filterSummary.length > 0 ? (
-                  filterSummary.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] text-zinc-400"
-                    >
-                      {item}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[11px] text-zinc-600">Default dashboard view.</span>
-                )}
-              </div>
-
-              <p className="text-[11px] text-zinc-600">
-                {matchingEventsCount} matching stories
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 lg:flex-row lg:items-center">
-              <input
-                value={saveViewName}
-                onChange={(event) => setSaveViewName(event.target.value)}
-                placeholder="Save this dashboard view as..."
-                className="w-full rounded-lg border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald/30 focus:outline-none"
-              />
-              <button
-                onClick={handleSaveCurrentView}
-                disabled={!saveViewName.trim() || saveState === "saving"}
-                className="btn-primary whitespace-nowrap disabled:opacity-50"
-              >
-                {saveState === "saving" ? "Saving..." : "Save view"}
-              </button>
-              {saveState === "done" && <span className="text-[11px] text-emerald">Saved.</span>}
-              {saveState === "error" && <span className="text-[11px] text-red-400">Could not save.</span>}
-            </div>
-          </div>
-
-          <EventMarketPanel
-            events={events.slice(0, 20)}
-            quoteMap={quoteMap}
-            emptyState={emptyState}
-          />
-        </SectionCard>
-
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
-          {hasPreferences && savedFilters.length === 0 && (
-            <SectionCard
-              title="Start Here"
-              subtitle="The quickest path to daily usefulness is brief -> focused view -> repeat."
-            >
-              <div className="space-y-2 text-[11px] text-zinc-500">
-                <Link
-                  href="/digest"
-                  className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
-                >
-                  <p className="font-semibold text-white">1. Check Morning Brief</p>
-                  <p className="mt-1 text-zinc-500">Use the ranked digest first. It is the fastest daily read.</p>
-                </Link>
-                <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                  <p className="font-semibold text-white">2. Save one dashboard view</p>
-                  <p className="mt-1 text-zinc-500">Create a reusable region, sector, or ticker view so your second visit is faster than the first.</p>
-                </div>
-                <Link
-                  href="/settings"
-                  className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
-                >
-                  <p className="font-semibold text-white">3. Keep the 7am briefing on</p>
-                  <p className="mt-1 text-zinc-500">That is the habit loop. Reliable delivery matters more than dashboard complexity.</p>
-                </Link>
-              </div>
-            </SectionCard>
-          )}
-
           <SectionCard
-            title="Morning Brief"
-            subtitle={`Daily briefing at ${preferences.digestHour}:00 ${preferences.timezone}${preferences.emailDigestEnabled ? " via email" : ""}`}
-            action={<Link href="/digest" className="ghost-chip hover:bg-white/[0.06]">Open digest</Link>}
+            title="Workspace"
+            subtitle="Filter the operating view, save it, and reopen the same context later."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={saveCurrentView} className="status-pill">Save view</button>
+                <Link href="/digest" className="status-pill">Open brief</Link>
+              </div>
+            }
           >
-            <div className="space-y-2">
-              {events.slice(0, 3).map((event) => (
-                <Link
-                  href={`/event/${event.id}`}
-                  key={event.id}
-                  className="block rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.04] transition"
-                >
-                  <p className="text-xs font-semibold text-white">{event.title}</p>
-                  <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2">
-                    {event.whyThisMatters || event.summary}
-                  </p>
-                </Link>
-              ))}
-              {events.length === 0 && (
-                <p className="py-4 text-center text-[11px] text-zinc-600">
-                  Your morning brief will populate after the next ingestion cycle.
-                </p>
-              )}
+            <div className="space-y-4">
+              <label className={`block ${blockClass}`}>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Search</span>
+                <input
+                  value={queryText}
+                  onChange={(event) => updateRoute({ q: event.target.value || undefined })}
+                  placeholder="Search narratives, regions, commodities, or symbols"
+                  className="mt-2 w-full bg-transparent text-base text-white outline-none placeholder:text-zinc-600"
+                />
+              </label>
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_140px_140px]">
+                <div className={blockClass}>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Focus</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{selectedRegion || topRegion?.scopeLabel || "Global view"}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{selectedSymbol ? `Symbol filter ${selectedSymbol}` : `${filteredStories.length} matching stories`}</p>
+                </div>
+                <label className={blockClass}>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Region</span>
+                  <select value={selectedRegion} onChange={(event) => updateRoute({ region: event.target.value || undefined })} className="mt-2 w-full rounded-xl border border-white/[0.06] bg-black/50 px-3 py-2 text-sm">
+                    <option value="">All regions</option>
+                    {(riskOverview?.regions ?? []).map((region) => (
+                      <option key={region.scopeKey} value={region.scopeLabel}>{region.scopeLabel}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={blockClass}>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Window</span>
+                  <select
+                    value={timeWindow}
+                    onChange={async (event) => {
+                      updateRoute({ window: event.target.value });
+                      await saveWorkspace({ defaultTimeWindow: event.target.value });
+                    }}
+                    className="mt-2 w-full rounded-xl border border-white/[0.06] bg-black/50 px-3 py-2 text-sm"
+                  >
+                    {TIME_WINDOWS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={blockClass}>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Sort</span>
+                  <select
+                    value={sort}
+                    onChange={async (event) => {
+                      updateRoute({ sort: event.target.value });
+                      await saveWorkspace({ defaultSort: event.target.value as "relevance" | "newest" | "severity" | "support" });
+                    }}
+                    className="mt-2 w-full rounded-xl border border-white/[0.06] bg-black/50 px-3 py-2 text-sm"
+                  >
+                    {SORT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className={blockClass}>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Pressure</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{riskOverview?.radar.pressureScore ?? 0}/100</p>
+                  <p className="mt-1 text-xs text-zinc-500">Current posture {riskOverview?.radar.posture || "mixed"}</p>
+                </div>
+                <div className={blockClass}>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Top region</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{topRegion?.scopeLabel || "No active zone"}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{topRegion ? `${topRegion.storyCount} stories in focus` : "Waiting for signal"}</p>
+                </div>
+                <div className={blockClass}>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Feed health</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{Math.round((status?.sourceHealth?.healthScore ?? 0) * 100)}/100</p>
+                  <p className="mt-1 text-xs text-zinc-500">{status?.sourceHealth?.description || `${filteredStories.length} stories match the current workspace filters`}</p>
+                </div>
+              </div>
+
+              {quickScopeItems.length ? (
+                <div>
+                  <p className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Quick scope</p>
+                  <div className="flex flex-wrap gap-2">
+                    {quickScopeItems.map((item) => (
+                      <button key={item.key} type="button" onClick={() => updateRoute(item.patch)} className="chip">
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </SectionCard>
 
-          <SectionCard
-            title="Saved Views"
-            subtitle={`Reusable filters for the dashboard, digest, and alerts${entitlements?.limits?.savedViews ? ` | ${savedFilters.length}/${entitlements.limits.savedViews} used` : ""}`}
+          <DashboardPanel
+            panelKey="risk"
+            title="Priority Regions"
+            subtitle="Start here. The highest-risk regions are ranked using severity, trust, recency, and market pressure."
+            collapsed={workspace.collapsedPanels.includes("risk")}
+            onToggle={togglePanel}
           >
-            {savedFilters.length === 0 ? (
-              <p className="py-4 text-center text-[11px] text-zinc-600">
-                Save a dashboard view to quickly revisit a region, sector, or risk setup.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {savedFilters.map((view) => (
-                  <div
-                    key={view.id}
-                    className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
+            <div className="space-y-3">
+              {(riskOverview?.regions ?? []).slice(0, 6).map((region) => (
+                <button
+                  key={region.scopeKey}
+                  type="button"
+                  onClick={() => updateRoute({ region: region.scopeLabel })}
+                  className="w-full rounded-[24px] border border-white/[0.05] bg-black/50 p-4 text-left transition hover:border-cyan/20 hover:bg-cyan/[0.04]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <p className="text-base font-semibold text-white">{region.scopeLabel}</p>
+                        <p className="text-xs text-zinc-500">{region.storyCount} stories / {region.narrativeCount} narratives</p>
+                      </div>
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Risk score {Math.round(region.riskScore)} / 100 / support {Math.round(region.supportScore * 100)}%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <HeatBadge heatLevel={region.heatLevel} trend={region.trend} />
                       <button
-                        onClick={() => applySavedView(view)}
-                        className="min-w-0 text-left"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          togglePinnedRegion(region.scopeLabel);
+                        }}
+                        className={`chip ${workspace.pinnedRegions.includes(region.scopeLabel) ? "!border-cyan/30 !bg-cyan/10 !text-white" : ""}`}
                       >
-                        <p className="truncate text-xs font-semibold text-white">{view.name}</p>
-                        <p className="mt-1 text-[10px] text-zinc-600">
-                          {[view.categories[0], view.regions[0], view.direction !== "all" ? view.direction : "", view.timeWindow !== "all" ? view.timeWindow : ""]
-                            .filter(Boolean)
-                            .join(" | ") || "Broad dashboard view"}
-                        </p>
-                      </button>
-                      <button
-                        onClick={() => removeFilter(view.id)}
-                        className="text-[10px] text-zinc-600 hover:text-zinc-300 transition"
-                      >
-                        Remove
+                        {workspace.pinnedRegions.includes(region.scopeLabel) ? "Pinned" : "Pin"}
                       </button>
                     </div>
                   </div>
-                ))}
+
+                  <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+                    <div className="h-2 flex-1 rounded-full bg-white/[0.06]">
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-cyan via-emerald to-amber-400"
+                        style={{ width: `${Math.min(100, region.riskScore)}%` }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2 lg:max-w-[45%] lg:justify-end">
+                      {region.topSymbols.slice(0, 4).map((symbol) => (
+                        <SymbolHoverCard key={`${region.scopeKey}-${symbol}`} symbol={symbol}>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              updateRoute({ symbol });
+                            }}
+                            className="chip"
+                          >
+                            {symbol}
+                          </button>
+                        </SymbolHoverCard>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel
+            panelKey="briefing"
+            title="Story Feed"
+            subtitle="The filtered event stream for the current workspace state."
+            collapsed={workspace.collapsedPanels.includes("briefing")}
+            onToggle={togglePanel}
+          >
+            <div className="space-y-3">
+              {filteredStories.slice(0, 8).map((story) => (
+                <button
+                  key={story.id}
+                  type="button"
+                  onClick={() => setSelectedEventId(story.id)}
+                  className={`w-full rounded-[24px] border p-4 text-left transition ${selectedEventId === story.id ? "border-cyan/25 bg-cyan/[0.05]" : "border-white/[0.05] bg-black/50 hover:border-white/[0.1]"}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                        {story.region} / {story.category} / {relativeTime(story.publishedAt)}
+                      </p>
+                      <h3 className="mt-2 text-base font-semibold text-white">{story.title}</h3>
+                    </div>
+                    {story.cluster ? <HeatBadge heatLevel={story.cluster.heatLevel} trend={story.cluster.trend} /> : null}
+                  </div>
+
+                  <p className="mt-3 text-sm leading-6 text-zinc-400">{story.whyThisMatters || story.summary}</p>
+
+                  <TrustSummary
+                    className="mt-3"
+                    compact
+                    supportingSourcesCount={story.supportingSourcesCount}
+                    sourceReliability={story.sourceReliability}
+                    intelligenceQuality={story.intelligenceQuality}
+                    publishedAt={story.publishedAt}
+                    reliability={story.reliability}
+                  />
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(story.correlations ?? []).slice(0, 4).map((correlation) => (
+                      <button
+                        key={`${story.id}-${correlation.symbol}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          updateRoute({ symbol: correlation.symbol });
+                        }}
+                        className="chip"
+                      >
+                        {correlation.symbol}
+                      </button>
+                    ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </DashboardPanel>
+        </div>
+
+        <div className="space-y-4">
+          <SectionCard title="Selected Story" subtitle="One focused research panel that follows the active story selection.">
+            {selectedEvent ? (
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-white/[0.05] bg-black/55 p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                        {selectedEvent.region} / {selectedEvent.category} / {selectedEvent.source}
+                      </p>
+                      <h2 className="mt-2 text-2xl font-semibold leading-tight text-white">{selectedEvent.title}</h2>
+                    </div>
+                    {selectedEvent.cluster ? <HeatBadge heatLevel={selectedEvent.cluster.heatLevel} trend={selectedEvent.cluster.trend} /> : null}
+                  </div>
+
+                  <p className="mt-4 text-sm leading-7 text-zinc-400">{selectedEvent.whyThisMatters || selectedEvent.summary}</p>
+
+                  <SignalOverview className="mt-4" reliability={selectedEvent.reliability} />
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link href={`/event/${selectedEvent.id}`} className="btn-primary">Open event file</Link>
+                    <button type="button" onClick={() => togglePinnedRegion(selectedEvent.region)} className="btn-secondary">
+                      {workspace.pinnedRegions.includes(selectedEvent.region) ? "Unpin region" : "Pin region"}
+                    </button>
+                  </div>
+                </div>
+
+                {selectedEvent.cluster ? (
+                  <div className={blockClass}>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Cluster context</p>
+                    <p className="mt-3 text-sm font-semibold text-white">{selectedEvent.cluster.headline}</p>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">{selectedEvent.cluster.whyNow}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedEvent.cluster.watchSymbols.map((symbol) => (
+                        <button key={`${selectedEvent.cluster?.clusterId}-${symbol}`} type="button" onClick={() => updateRoute({ symbol })} className="chip">
+                          {symbol}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-white/[0.08] bg-black/30 px-4 py-8 text-center text-sm text-zinc-500">
+                No stories match the current workspace filters.
               </div>
             )}
           </SectionCard>
 
-          <SectionCard
-            title="Top Movers"
-            subtitle={`Highest absolute % change | ${quoteProviderLabel}`}
-          >
-            <TopMoversCard quotes={quotes} />
-          </SectionCard>
-
-          <SectionCard
-            title="Pattern Insights"
-            subtitle="Predictions from historical correlations"
-          >
-            <PatternInsightsCard />
-          </SectionCard>
-
-          <SectionCard
-            title="Regional Hotspots"
-            subtitle="Click a region to narrow the dashboard feed"
-            action={
-              selectedRegion !== "all" ? (
-                <button
-                  onClick={() => setSelectedRegion("all")}
-                  className="ghost-chip hover:bg-white/[0.06]"
-                >
-                  All regions
-                </button>
-              ) : undefined
-            }
-          >
-            {topRegions.length === 0 ? (
-              <p className="py-4 text-center text-[11px] text-zinc-600">
-                No regions match the current dashboard filters.
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {topRegions.map((item) => {
-                  const isActive = selectedRegion === item.region;
+          <SectionCard title="Market Context" subtitle="The directly exposed symbols linked to the selected story.">
+            {selectedEvent ? (
+              <div className="space-y-2">
+                {(selectedEvent.correlations ?? []).slice(0, 6).map((correlation) => {
+                  const quote = quoteMap.get(correlation.symbol);
                   return (
-                    <button
-                      key={item.region}
-                      onClick={() => setSelectedRegion((prev) => (prev === item.region ? "all" : item.region))}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                        isActive
-                          ? "border-emerald/30 bg-emerald/10"
-                          : "border-white/[0.04] bg-white/[0.02] hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-semibold ${isActive ? "text-emerald" : "text-zinc-200"}`}>
-                          {item.region}
-                        </span>
-                        <span className={`text-xs font-bold ${isActive ? "text-emerald" : "text-amber-400"}`}>
-                          {item.count}
-                        </span>
+                    <div key={`${selectedEvent.id}-${correlation.symbol}`} className="flex items-center justify-between rounded-[22px] border border-white/[0.05] bg-black/50 px-4 py-3">
+                      <div>
+                        <button type="button" onClick={() => updateRoute({ symbol: correlation.symbol })} className="text-sm font-semibold text-white transition hover:text-cyan">
+                          {correlation.symbol}
+                        </button>
+                        <p className="text-xs text-zinc-500">
+                          {correlation.impactDirection} bias / score {Math.round(correlation.impactScore * 100)}%
+                        </p>
                       </div>
-                      <div className="mt-1.5 h-1 rounded-full bg-white/[0.05]">
-                        <div
-                          className={`h-1 rounded-full ${isActive ? "bg-emerald" : "bg-gradient-to-r from-emerald to-cyan"}`}
-                          style={{ width: `${Math.min(100, (item.count / maxRegionCount) * 100)}%` }}
-                        />
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-white">{quote ? formatCurrency(quote.price) : "No quote"}</p>
+                        <p className={`text-xs font-semibold ${quote && quote.changePct >= 0 ? "text-emerald" : "text-red-400"}`}>
+                          {quote ? formatPct(quote.changePct) : formatPct(correlation.impactMagnitude)}
+                        </p>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-white/[0.08] bg-black/30 px-4 py-8 text-center text-sm text-zinc-500">
+                Select a story to open its market context.
+              </div>
             )}
           </SectionCard>
 
-          <SectionCard
-            title="Account Access"
-            subtitle={entitlements?.premiumActive ? "Premium is active." : "Free accounts get the full core workflow. Premium increases limits and briefing depth."}
-          >
-            <div className="space-y-2 text-[11px] text-zinc-500">
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                <span>Plan</span>
-                <span className="font-semibold text-white">
-                  {entitlements?.accessLabel || "Free"}
-                </span>
+          <SectionCard title="Watchlist Context" subtitle="Pinned symbols and followed assets with the latest available price context.">
+            <div className="space-y-2">
+              {watchlistSymbols.slice(0, 6).map((symbol) => {
+                const quote = quoteMap.get(symbol);
+                return (
+                  <div key={symbol} className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-white/[0.05] bg-black/50 px-4 py-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-white">{symbol}</p>
+                        <p className="text-[11px] text-zinc-500">{preferences.symbols.includes(symbol) ? "Preference" : "Watchlist / radar"}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-zinc-500">{quote ? formatCurrency(quote.price) : "No quote"} {quote ? `/ ${formatPct(quote.changePct)}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => togglePinnedSymbol(symbol)}
+                        className={`chip ${workspace.pinnedSymbols.includes(symbol) ? "!border-cyan/30 !bg-cyan/10 !text-white" : ""}`}
+                      >
+                        {workspace.pinnedSymbols.includes(symbol) ? "Pinned" : "Pin"}
+                      </button>
+                      <Link href={`/stock/${symbol}`} className="btn-secondary">Open</Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Signal Integrity" subtitle="Use this before acting. It shows whether the upstream feed layer is healthy enough to trust emerging stories quickly.">
+            <div className="space-y-3">
+              <div className={blockClass}>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Network health</p>
+                <p className="mt-2 text-sm font-semibold text-white">{status?.sourceHealth?.label || "Feed health unavailable"}</p>
+                <p className="mt-1 text-xs text-zinc-500">{status?.sourceHealth?.description || "No source-health telemetry has been recorded yet."}</p>
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                <span>Saved views</span>
-                <span className="font-semibold text-white">
-                  {entitlements?.limits?.savedViews === null ? "Unlimited" : `${savedFilters.length}/${entitlements?.limits?.savedViews ?? 3}`}
-                </span>
+              <div className={blockClass}>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Coverage snapshot</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {status?.sourceHealth?.healthyFeeds ?? 0} healthy / {status?.sourceHealth?.degradedFeeds ?? 0} degraded / {status?.sourceHealth?.failedFeeds ?? 0} failed
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {workspace.pinnedRegions.length + workspace.pinnedSymbols.length} pins saved in this workspace / {entitlements?.premiumActive ? 20 : 8} available.
+                </p>
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                <span>Alert capacity</span>
-                <span className="font-semibold text-white">
-                  {entitlements?.limits?.alerts === null ? "Unlimited" : `${entitlements?.limits?.alerts ?? 3} active`}
-                </span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                <span>Founding premium</span>
-                <span className="font-semibold text-white">
-                  {typeof entitlements?.foundingPremiumSpotsRemaining === "number" && entitlements.foundingPremiumSpotsRemaining > 0
-                    ? `${entitlements.foundingPremiumSpotsRemaining} of 10 spots left`
-                    : "Closed"}
-                </span>
-              </div>
-              <p className="pt-1 text-[11px] text-zinc-600">
-                The anonymous homepage shows a live preview. Every new account starts with a 7-day premium trial. The first 10 users keep premium for life.
-              </p>
+              {status?.sourceHealth?.activeIssues?.length ? (
+                <div className="space-y-2">
+                  {status.sourceHealth.activeIssues.slice(0, 3).map((issue) => (
+                    <div key={issue.source} className="rounded-[20px] border border-white/[0.06] bg-black/50 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">{issue.source}</p>
+                        <span className="chip">{issue.label}</span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">{issue.note}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </SectionCard>
         </div>
       </div>
-
-      {(isLoading || prefsLoading) && (
-        <p className="text-center text-xs text-zinc-500 animate-pulse">
-          Loading intelligence data...
-        </p>
-      )}
     </Layout>
   );
 }

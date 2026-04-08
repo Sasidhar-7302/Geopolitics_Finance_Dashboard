@@ -26,8 +26,8 @@ module.exports = {
         cyan: "#06B6D4",
       },
       fontFamily: {
-        display: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
-        body: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        display: ["'Space Grotesk'", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        body: ["'Manrope'", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
       },
       boxShadow: {
         soft: "0 1px 3px rgba(0, 0, 0, 0.5)",
